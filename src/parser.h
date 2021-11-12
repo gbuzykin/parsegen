@@ -1,6 +1,9 @@
 #pragma once
 
+#include "grammar.h"
+
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 
 const int tt_act = 256;
@@ -22,33 +25,15 @@ union LValType {
     char* str;
 };
 
-// Lexer class
-class Lexer {
+// Input file parser class
+class Parser {
  public:
 // Include constant definitions
 #include "lex_def.h"
 
-    Lexer(std::istream* in = 0);
-
-    std::istream* switchStream(std::istream* in = 0);
-
-    int lex();
-    void pushStartCondition(int sc) {
-        sc_stack_.push_back(sc_);
-        sc_ = sc;
-    };
-    int getStartCondition() const { return sc_; };
-    bool popStartCondition() {
-        if (sc_stack_.size() == 0) return false;
-        sc_ = sc_stack_.back();
-        sc_stack_.pop_back();
-        return true;
-    };
-
- public:
-    const LValType& getLVal() { return lval_; };
-    int getLineNo() const { return line_no_; };
-    void setLineNo(int line_no) { line_no_ = line_no; };
+    Parser(std::istream& input, Grammar& grammar) : input_(input), grammar_(grammar) {}
+    int parse();
+    const std::string& getErrorString() const { return err_string_; };
 
  private:
     static int symb_to_idx_[];
@@ -59,14 +44,31 @@ class Lexer {
     static int accept_list_[];
     static int accept_idx_[];
 
-    std::istream* input_;
-    int sc_, state_;
+    std::istream& input_;
+    int sc_ = sc_initial;
+    int state_ = sc_initial;
     std::vector<int> sc_stack_;
     std::vector<int> state_stack_;
     std::vector<char> text_;
-    int line_no_;
+    int line_no_ = 1;
     LValType lval_;
     std::vector<char> str_;  // String token
+    Grammar& grammar_;
+    std::string err_string_;
+
+    std::unordered_map<std::string, std::string> options_;
+
+    int lex();
+    void pushStartCondition(int sc) {
+        sc_stack_.push_back(sc_);
+        sc_ = sc;
+    };
+    bool popStartCondition() {
+        if (sc_stack_.size() == 0) return false;
+        sc_ = sc_stack_.back();
+        sc_stack_.pop_back();
+        return true;
+    };
 
     bool onPatternMatched(int, int&);
     const char* getText() const { return &text_[0]; };
@@ -78,10 +80,23 @@ class Lexer {
     };
     int getChar() {
         char ch = 0;
-        input_->get(ch);
+        input_.get(ch);
         return ((int)ch & 0xFF);
     };
-    void ungetChar() { input_->unget(); };
+    void ungetChar() { input_.unget(); };
+
+    int errorSyntax(int);
+    int errorNameRedef(int, const std::string&);
+    int errorLeftPartIsNotNonterm(int);
+    int errorUndefAction(int, const std::string&);
+    int errorUndefNonterm(const std::string&);
+    int errorUnusedProd(const std::string&);
+    int errorPrecRedef(int, int);
+    int errorUndefToken(int, const std::string&);
+    int errorUndefPrec(int, int);
+    int errorInvUseOfPredefToken(int, int);
+    int errorInvOption(int, const std::string&);
+    int errorInvUseOfActName(int, const std::string&);
 
     static int str_to_int(const char*);
     static inline int dig(char ch) { return (int)(ch - '0'); };
