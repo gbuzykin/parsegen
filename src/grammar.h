@@ -1,40 +1,74 @@
 #pragma once
 
 #include "nametbl.h"
+#include "valset.h"
 
+#include <memory>
+#include <optional>
 #include <vector>
 
-const int idEnd = 0x000;
-const int idEmpty = 0x100;
-const int idDefault = 0x101;
-const int idError = 0x102;
+enum {
+    kTokenEnd = 0,
+    kCharCount = 0x100,
+    kTokenEmpty = kCharCount,
+    kTokenDefault,
+    kTokenError,
+    kNontermFlag = 0x1000,
+    kActionFlag = 0x2000,
+    kNontermAccept = kNontermFlag,
+};
 
-const int maskNonterm = 0x1000;
-const int maskAction = 0x2000;
-const int maskId = 0x0FFF;
+enum class Assoc { kNone = 0, kLeft, kRight };
 
-const int maskLeftAssoc = 0x1000;
-const int maskRightAssoc = 0x2000;
-const int maskPrec = 0x0FFF;
+class Grammar {
+ public:
+    struct TokenInfo {
+        bool is_used = false;
+        int prec = -1;
+        Assoc assoc = Assoc::kNone;
+    };
 
-struct Grammar {
-    int token_count = 0;
-    int nonterm_count = 0;
-    int action_count = 0;
-    std::vector<bool> token_used;
-    std::vector<int> grammar;
-    std::vector<int> grammar_idx;
-    std::vector<int> act_on_reduce;
-    std::vector<int> token_prec;
-    std::vector<int> prod_prec;
-    NameTable name_tbl;
-    std::vector<std::pair<std::string_view, int>> getTokenList();
-    std::vector<std::pair<std::string_view, int>> getActionList();
-    void printProduction(std::ostream& outp, int prod_no, int pos = -1) const;
+    struct ProductionInfo {
+        unsigned left = 0;
+        std::vector<unsigned> right;
+        unsigned action = 0;
+        int prec = -1;
+    };
+
+    Grammar();
+    std::pair<unsigned, bool> addToken(std::string name);
+    std::pair<unsigned, bool> addAction(std::string name);
+    std::pair<unsigned, bool> addNonterm(std::string name);
+    bool setTokenPrecAndAssoc(unsigned id, int prec, Assoc assoc);
+    ProductionInfo& addProduction(unsigned left, std::vector<unsigned> right, int prec);
+
+    unsigned getTokenCount() const { return static_cast<unsigned>(tokens_.size()); }
+    const TokenInfo& getTokenInfo(unsigned id) const { return tokens_[id]; }
+    unsigned getNontermCount() const { return nonterm_count_; }
+    unsigned getProductionCount() const { return static_cast<unsigned>(productions_.size()); }
+    const ProductionInfo& getProductionInfo(unsigned n_prod) const { return productions_[n_prod]; }
+    std::optional<unsigned> findName(std::string_view name) const { return name_tbl_.findName(name); }
+    std::string_view getName(unsigned id) const;
+    std::vector<std::pair<std::string_view, unsigned>> getTokenList();
+    std::vector<std::pair<std::string_view, unsigned>> getActionList();
+    const ValueSet& getDefinedNonterms() const { return defined_nonterms_; }
+    const ValueSet& getUsedNonterms() const { return used_nonterms_; }
+
     void printTokens(std::ostream& outp) const;
     void printNonterms(std::ostream& outp) const;
     void printActions(std::ostream& outp) const;
     void printGrammar(std::ostream& outp) const;
+    void printProduction(std::ostream& outp, unsigned n_prod, std::optional<unsigned> pos) const;
     [[nodiscard]] std::string symbolText(unsigned id) const;
+
+ private:
+    unsigned nonterm_count_ = 1;
+    unsigned action_count_ = 1;
+    std::vector<TokenInfo> tokens_;
+    std::vector<ProductionInfo> productions_;
+    ValueSet defined_nonterms_;
+    ValueSet used_nonterms_;
+    NameTable name_tbl_;
+
     [[nodiscard]] std::string decoratedSymbolText(unsigned id) const;
 };

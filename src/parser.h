@@ -34,7 +34,8 @@ enum {
     tt_eof = 0,
     tt_symb = 256,
     tt_id,
-    tt_error_id,
+    tt_predef_id,
+    tt_internal_id,
     tt_token_id,
     tt_action_id,
     tt_string,
@@ -60,10 +61,7 @@ class Parser {
     int parse();
 
  private:
-    struct TokenInfo {
-        unsigned n_col = 0;
-        std::variant<unsigned, std::string> val;
-    };
+    using TokenVal = std::variant<unsigned, std::string_view>;
 
     struct ErrorLogger {
         Parser* parser;
@@ -86,13 +84,15 @@ class Parser {
 
     std::istream& input_;
     std::string file_name_;
-    const char* current_line_ = nullptr;
+    std::unique_ptr<char[]> text_;
+    std::string current_line_;
     unsigned n_line_ = 1, n_col_ = 1;
-    std::vector<int> sc_stack_;
-    lex_detail::StateData lex_state_;
-    TokenInfo tkn_;
+    lex_detail::CtxData lex_ctx_;
+    std::vector<int> lex_state_stack_;
+    TokenVal tkn_val_;
+    unsigned tkn_col_ = 0;
     Grammar& grammar_;
-    std::unordered_map<std::string, std::string> options_;
+    std::unordered_map<std::string_view, std::string_view> options_;
 
     static int dig(char ch) { return static_cast<int>(ch - '0'); }
     static int hdig(char ch) {

@@ -31,17 +31,19 @@ whitespace       {ws}
 
 unterminated_token   <string symb> \n | <<EOF>>
 
-token     <initial> "%token"
-action    <initial> "%action"
-option    <initial> "%option"
-left      <initial> "%left"
-right     <initial> "%right"
-nonassoc  <initial> "%nonassoc"
-prec      <initial> "%prec"
-sep       <initial> "%%"
-token_id  <initial> \[{id}\]
-action_id <initial> \{{id}\}
-error_id  <initial> "$error"
+token       <initial> "%token"
+action      <initial> "%action"
+option      <initial> "%option"
+left        <initial> "%left"
+right       <initial> "%right"
+nonassoc    <initial> "%nonassoc"
+prec        <initial> "%prec"
+sep         <initial> "%%"
+token_id    <initial> \[{id}\]
+action_id   <initial> \{{id}\}
+predef_id   <initial> "$end"|"$empty"|"$default"|"$error"|"$accept"
+internal_id <initial> $({letter}|{dig}|_)+
+
 id        <initial> {id}
 comment   <initial> #
 
