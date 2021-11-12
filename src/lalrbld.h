@@ -37,7 +37,7 @@ class LRBuilder {
 
     struct StateItem {
         ValueSet la;
-        std::vector<const StateItem*> accept_la;
+        std::vector<const StateItem*> accept_la_from;
     };
 
     using State = std::map<Position, StateItem>;

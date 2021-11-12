@@ -13,12 +13,17 @@ enum {
     kTokenEmpty = kCharCount,
     kTokenDefault,
     kTokenError,
-    kNontermFlag = 0x1000,
-    kActionFlag = 0x2000,
-    kNontermAccept = kNontermFlag,
+    kNontermAccept = 0x1000,
 };
 
 enum class Assoc { kNone = 0, kLeft, kRight };
+
+constexpr bool isNonterm(unsigned id) { return id & 0x1000; }
+constexpr bool isAction(unsigned id) { return id & 0x2000; }
+constexpr bool isToken(unsigned id) { return !(id & 0x3000); }
+constexpr unsigned getIndex(unsigned id) { return id & ~0x3000; }
+constexpr unsigned makeNontermId(unsigned index) { return 0x1000 + index; }
+constexpr unsigned makeActionId(unsigned index) { return 0x2000 + index; }
 
 class Grammar {
  public:
@@ -37,8 +42,8 @@ class Grammar {
 
     Grammar();
     std::pair<unsigned, bool> addToken(std::string name);
-    std::pair<unsigned, bool> addAction(std::string name);
     std::pair<unsigned, bool> addNonterm(std::string name);
+    std::pair<unsigned, bool> addAction(std::string name);
     bool setTokenPrecAndAssoc(unsigned id, int prec, Assoc assoc);
     ProductionInfo& addProduction(unsigned left, std::vector<unsigned> right, int prec);
 

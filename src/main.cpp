@@ -211,7 +211,7 @@ int main(int argc, char** argv) {
             for (unsigned n_prod = 0; n_prod < grammar.getProductionCount(); ++n_prod) {
                 const auto& prod = grammar.getProductionInfo(n_prod);
                 reduce_info.push_back(static_cast<int>(prod.right.size()));  // Length
-                reduce_info.push_back(goto_idx[prod.left & ~kNontermFlag]);  // Goto index
+                reduce_info.push_back(goto_idx[getIndex(prod.left)]);        // Goto index
                 reduce_info.push_back(prod.action);                          // Action on reduce
             }
 

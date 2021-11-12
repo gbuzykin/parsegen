@@ -87,7 +87,7 @@ int Parser::parse() {
         // Read left part of the production
         if ((tt = lex()) == tt_id) {
             unsigned left = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_val_))).first;
-            if (!(left & kNontermFlag)) { return logError() << "name is already used for tokens or actions."; }
+            if (!isNonterm(left)) { return logError() << "name is already used for tokens or actions."; }
 
             if (lex() != ':') { return logSyntaxError(tt); }
 
@@ -104,7 +104,7 @@ int Parser::parse() {
                                 case tt_token_id:
                                 case tt_internal_id: {
                                     if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_val_));
-                                        found_id && !(*found_id & (kNontermFlag | kActionFlag))) {
+                                        found_id && isToken(*found_id)) {
                                         id = *found_id;
                                     } else {
                                         return logError() << "undefined token.";
@@ -121,9 +121,7 @@ int Parser::parse() {
                         } break;
                         case tt_id: {  // Nonterminal
                             auto id = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_val_))).first;
-                            if (!(id & kNontermFlag)) {
-                                return logError() << "name is already used for tokens or actions.";
-                            }
+                            if (!isNonterm(id)) { return logError() << "name is already used for tokens or actions."; }
                             right.push_back(id);
                         } break;
                         case tt_token_id:
@@ -132,7 +130,7 @@ int Parser::parse() {
                                 return logSyntaxError(tt);
                             }
                             if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_val_));
-                                found_id && !(*found_id & (kNontermFlag | kActionFlag))) {
+                                found_id && isToken(*found_id)) {
                                 right.push_back(*found_id);
                             } else {
                                 return logError() << "undefined token.";
@@ -143,7 +141,7 @@ int Parser::parse() {
                         } break;
                         case tt_action_id: {  // Action
                             if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_val_));
-                                found_id && *found_id & kActionFlag) {
+                                found_id && isAction(*found_id)) {
                                 right.push_back(*found_id);
                             } else {
                                 return logError() << "undefined action.";
@@ -165,13 +163,13 @@ int Parser::parse() {
     // Check grammar
     const auto& nonterm_used = grammar_.getUsedNonterms();
     const auto& nonterm_defined = grammar_.getDefinedNonterms();
-    for (unsigned id : nonterm_defined - nonterm_used) {
-        std::cerr << file_name_ << ": warning: unused nonterminal `" << grammar_.getName(id | kNontermFlag) << "`."
+    for (unsigned n : nonterm_defined - nonterm_used) {
+        std::cerr << file_name_ << ": warning: unused nonterminal `" << grammar_.getName(makeNontermId(n)) << "`."
                   << std::endl;
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
-        for (unsigned id : undef) {
-            std::cerr << file_name_ << ": error: undefined nonterminal `" << grammar_.getName(id | kNontermFlag) << "`."
+        for (unsigned n : undef) {
+            std::cerr << file_name_ << ": error: undefined nonterminal `" << grammar_.getName(makeNontermId(n)) << "`."
                       << std::endl;
         }
         return false;
