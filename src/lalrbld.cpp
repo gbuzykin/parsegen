@@ -1,22 +1,41 @@
 #include "lalrbld.h"
 
+#include <algorithm>
 #include <cassert>
+#include <optional>
 #include <stdexcept>
 
 void LRBuilder::buildAnalizer() {
     buildFirstTable();
     buildAetaTable();
 
-    // Build LR(0) item groups;
+    // Build LR(0) states :
 
     std::vector<unsigned> pending_states;
+    std::vector<std::vector<Action>> action_tbl;
+    std::vector<std::vector<unsigned>> goto_tbl;
+
     states_.reserve(100);
-    action_tbl_.reserve(100);
-    goto_tbl_.reserve(100);
+    action_tbl.reserve(100);
+    goto_tbl.reserve(100);
     pending_states.reserve(100);
 
+    auto add_state = [&states = states_, &grammar = grammar_, &action_tbl, &goto_tbl](const PositionSet& s) {
+        auto it = std::find_if(states.begin(), states.end(), [&s](const auto& s2) {
+            return s2.size() == s.size() &&
+                   std::equal(s2.begin(), s2.end(), s.begin(),
+                              [](const auto& i1, const auto& i2) { return i1.first == i2.first; });
+        });
+        if (it != states.end()) { return std::make_pair(static_cast<unsigned>(it - states.begin()), false); }
+        // Add new state
+        states.push_back(s);
+        action_tbl.emplace_back(grammar.getTokenCount());
+        goto_tbl.emplace_back(grammar.getNontermCount(), 0);
+        return std::make_pair(static_cast<unsigned>(states.size()) - 1, true);
+    };
+
     // Add initial state
-    pending_states.push_back(addState({{Position{0, 0}, LookAheadSet{}}}).first);
+    pending_states.push_back(add_state({{Position{0, 0}, LookAheadSet{}}}).first);
 
     do {
         unsigned n_state = pending_states.back();
@@ -25,9 +44,9 @@ void LRBuilder::buildAnalizer() {
         for (unsigned n = 0; n < grammar_.getNontermCount(); ++n) {
             PositionSet new_state = calcGoto(states_[n_state], makeNontermId(n));
             if (!new_state.empty()) {
-                auto [n_new_state, success] = addState(new_state);
+                auto [n_new_state, success] = add_state(new_state);
                 if (success) { pending_states.push_back(n_new_state); }
-                goto_tbl_[n_state][n] = n_new_state;
+                goto_tbl[n_state][n] = n_new_state;
             }
         }
         // Goto for tokens
@@ -35,9 +54,9 @@ void LRBuilder::buildAnalizer() {
             if (grammar_.getTokenInfo(symb).is_used) {
                 PositionSet new_state = calcGoto(states_[n_state], symb);
                 if (!new_state.empty()) {
-                    auto [n_new_state, success] = addState(new_state);
+                    auto [n_new_state, success] = add_state(new_state);
                     if (success) { pending_states.push_back(n_new_state); }
-                    action_tbl_[n_state][symb] = (n_new_state << kActionTblFlagCount) + kShiftBit;
+                    action_tbl[n_state][symb] = {Action::Type::kShift, n_new_state};
                 }
             }
         }
@@ -59,14 +78,14 @@ void LRBuilder::buildAnalizer() {
                 } else if (closure_pos.pos == prod.right.size()) {
                     continue;
                 }
-                int goto_state = -1;
+                unsigned goto_state = 0;
                 unsigned next_symb = prod.right[closure_pos.pos];
                 if (isNonterm(next_symb)) {
-                    goto_state = goto_tbl_[n_state][getIndex(next_symb)];
-                } else if (action_tbl_[n_state][next_symb] >= 0) {  // Token
-                    goto_state = action_tbl_[n_state][next_symb] >> kActionTblFlagCount;
+                    goto_state = goto_tbl[n_state][getIndex(next_symb)];
+                } else if (action_tbl[n_state][next_symb].type == Action::Type::kShift) {
+                    goto_state = action_tbl[n_state][next_symb].val;
                 }
-                if (goto_state <= 0) { throw std::runtime_error("invalid goto state"); }
+                if (goto_state == 0) { throw std::runtime_error("invalid goto state"); }
 
                 // `A -> alpha . X beta` -> `A -> alpha X . beta`
                 ValueSet la = closure_la_set.la;
@@ -109,22 +128,22 @@ void LRBuilder::buildAnalizer() {
                 continue;
             }
             for (unsigned symb : la_set.la) {
-                int& action = action_tbl_[n_state][symb];
-                if (action < 0) {
-                    action = (3 * pos.n_prod) << kActionTblFlagCount;  // Reduce(n_prod)
-                } else if (action & kShiftBit) {
+                Action& action = action_tbl[n_state][symb];
+                if (action.val == 0) {
+                    action = {Action::Type::kReduce, pos.n_prod};
+                } else if (action.type == Action::Type::kShift) {
                     // Shift-Reduce conflict
                     const auto& token_info = grammar_.getTokenInfo(symb);
                     int token_prec = token_info.prec;
                     int prod_prec = prod.prec;
                     if (token_prec >= 0 && prod_prec >= 0) {
                         if (prod_prec > token_prec) {
-                            action = (3 * pos.n_prod) << kActionTblFlagCount;  // Reduce(n_prod)
+                            action = {Action::Type::kReduce, pos.n_prod};
                         } else if (token_prec == prod_prec) {
                             if (token_info.assoc == Assoc::kLeft) {
-                                action = (3 * pos.n_prod) << kActionTblFlagCount;  // Reduce(n_prod)
+                                action = {Action::Type::kReduce, pos.n_prod};
                             } else if (token_info.assoc == Assoc::kNone) {
-                                action = -1;
+                                action = {Action::Type::kError};
                             }
                         }
                     } else {
@@ -136,125 +155,97 @@ void LRBuilder::buildAnalizer() {
             }
         }
     }
+
+    makeCompressedTables(action_tbl, goto_tbl);
 }
 
-void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& action_list, std::vector<int>& goto_idx,
-                               std::vector<int>& goto_list) {
+void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& action_tbl,
+                                     const std::vector<std::vector<unsigned>>& goto_tbl) {
     // Compress action table :
 
-    action_idx.resize(action_tbl_.size());
-    for (unsigned n_state = 0; n_state < action_tbl_.size(); ++n_state) {
-        // Try to find equal state
-        unsigned state2;
-        bool found = false;
-        for (state2 = 0; state2 < n_state; state2++) {
-            found = std::equal(action_tbl_[n_state].begin(), action_tbl_[n_state].end(), action_tbl_[state2].begin());
-            if (found) break;  // Found
+    compr_action_tbl_.index.resize(action_tbl.size());
+    compr_action_tbl_.data.reserve(10000);
+    for (unsigned n_state = 0; n_state < action_tbl.size(); ++n_state) {
+        // Try to find the equal state
+        auto equal_it = std::find_if(action_tbl.begin(), action_tbl.begin() + n_state,
+                                     [&state = action_tbl[n_state]](const auto& state2) {
+                                         return std::equal(state2.begin(), state2.end(), state.begin());
+                                     });
+        if (equal_it != action_tbl.begin() + n_state) {
+            compr_action_tbl_.index[n_state] = compr_action_tbl_.index[equal_it - action_tbl.begin()];
+            continue;
         }
-        if (!found) {
-            const std::vector<int>& line = action_tbl_[n_state];
-            action_idx[n_state] = (int)action_list.size();
 
-            // Are there any reduce actions?
-            bool can_reduce = false;
-            int allowed_reduce_act = -1;
-            int err_count = 0;
-            for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
-                int act = line[symb];
-                if (act == -1)
-                    err_count++;
-                else if (!can_reduce && !(act & kShiftBit)) {
-                    allowed_reduce_act = act;
-                    can_reduce = true;
-                }
-            }
+        // If reduce action is possible for this state we can replace all
+        // error actions with any of possible reduce actions.
+        // The error will be reported later after all reductions are made.
 
-            // Find the most frequent action :
+        // Build histograms for shift and reduce actions, count error actions as well
+        unsigned error_count = 0;
+        std::optional<Action> possible_reduce_action;
+        std::vector<unsigned> shift_histo(action_tbl.size(), 0);
+        std::vector<unsigned> reduce_histo(grammar_.getProductionCount(), 0);
+        for (const auto& action : action_tbl[n_state]) {
+            switch (action.type) {
+                case Action::Type::kError: ++error_count; break;
+                case Action::Type::kShift: ++shift_histo[action.val]; break;
+                case Action::Type::kReduce: {
+                    ++reduce_histo[action.val];
+                    if (!possible_reduce_action) { possible_reduce_action = action; }
+                } break;
+            }
+        }
 
-            // Build histogram
-            std::map<int, int> histo;
-            for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
-                int act = line[symb];
-                if (!can_reduce || (act != -1)) {
-                    int freq = 1;
-                    if (can_reduce && !(act & kShiftBit)) freq += err_count;
-                    std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(act, freq));
-                    if (!ins_res.second) ins_res.first->second++;
-                }
+        // Find the most frequent table element including all error actions if they will
+        // be converted to any of reduce actions
+        auto shift_max_it = std::max_element(shift_histo.begin(), shift_histo.end());
+        Action most_freq_action{Action::Type::kShift, static_cast<unsigned>(shift_max_it - shift_histo.begin())};
+        if (possible_reduce_action) {
+            auto reduce_max_it = std::max_element(reduce_histo.begin(), reduce_histo.end());
+            if (*reduce_max_it + error_count > *shift_max_it) {
+                most_freq_action = {Action::Type::kReduce, static_cast<unsigned>(reduce_max_it - reduce_histo.begin())};
             }
-            // Find maximum frequency
-            int max_freq = 0, most_freq_act = 0;
-            std::map<int, int>::const_iterator it = histo.begin();
-            while (it != histo.end()) {
-                if (it->second > max_freq) {
-                    max_freq = it->second;
-                    most_freq_act = it->first;
-                }
-                it++;
-            }
+        } else if (error_count > *shift_max_it) {
+            most_freq_action = {Action::Type::kError};
+        }
 
-            // Build list
-            for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
-                int act = line[symb];
-                if (!can_reduce || (act != -1)) {
-                    if (act != most_freq_act) {
-                        action_list.push_back(symb);
-                        // if (act == idNonassocError) act = -1;
-                        action_list.push_back(act);
-                    }
-                } else {
-                    if (most_freq_act & kShiftBit) {
-                        action_list.push_back(symb);
-                        action_list.push_back(allowed_reduce_act);
-                    }
-                }
+        // Build compressed table
+        compr_action_tbl_.index[n_state] = static_cast<unsigned>(compr_action_tbl_.data.size());
+        for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
+            const auto& action = action_tbl[n_state][symb];
+            if (!possible_reduce_action || action.type != Action::Type::kError) {
+                if (action != most_freq_action) { compr_action_tbl_.data.emplace_back(symb, action); }
+            } else if (most_freq_action.type == Action::Type::kShift) {
+                compr_action_tbl_.data.emplace_back(static_cast<int>(symb), *possible_reduce_action);
             }
-            // Add default action
-            action_list.push_back(-1);
-            action_list.push_back(most_freq_act);
-        } else
-            action_idx[n_state] = action_idx[state2];
+        }
+        // Add default action
+        compr_action_tbl_.data.emplace_back(-1, most_freq_action);
     }
 
     // Compress goto table :
 
-    goto_idx.resize(grammar_.getNontermCount());
+    compr_goto_tbl_.index.resize(grammar_.getNontermCount());
+    compr_goto_tbl_.data.reserve(10000);
     for (unsigned n = 0; n < grammar_.getNontermCount(); ++n) {
-        goto_idx[n] = (int)goto_list.size();
-
-        // Find the most frequent state :
-
-        std::map<int, int> histo;
         // Build histogram
-        for (unsigned n_state = 0; n_state < goto_tbl_.size(); ++n_state) {
-            int new_state = goto_tbl_[n_state][n];
-            if (new_state != -1) {
-                std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(new_state, 1));
-                if (!ins_res.second) ins_res.first->second++;
+        std::vector<unsigned> histo(goto_tbl.size(), 0);
+        for (unsigned n_state = 0; n_state < goto_tbl.size(); ++n_state) {
+            unsigned n_new_state = goto_tbl[n_state][n];
+            if (n_new_state > 0) { ++histo[n_new_state]; }
+        }
+        // Find the most frequent state
+        auto max_it = std::max_element(histo.begin(), histo.end());
+        unsigned n_most_freq_state = static_cast<unsigned>(max_it - histo.begin());
+        // Build compressed table
+        compr_goto_tbl_.index[n] = static_cast<unsigned>(compr_goto_tbl_.data.size());
+        for (unsigned n_state = 0; n_state < goto_tbl.size(); ++n_state) {
+            unsigned n_new_state = goto_tbl[n_state][n];
+            if (n_new_state > 0 && n_new_state != n_most_freq_state) {
+                compr_goto_tbl_.data.emplace_back(static_cast<int>(n_state), n_new_state);
             }
         }
-        // Find maximum frequency
-        int max_freq = 0, most_freq_state = 0;
-        std::map<int, int>::const_iterator it = histo.begin();
-        while (it != histo.end()) {
-            if (it->second > max_freq) {
-                max_freq = it->second;
-                most_freq_state = it->first;
-            }
-            it++;
-        }
-
-        // Build list
-        for (unsigned n_state = 0; n_state < goto_tbl_.size(); ++n_state) {
-            int state2 = goto_tbl_[n_state][n];
-            if ((state2 != -1) && (state2 != most_freq_state)) {
-                goto_list.push_back(n_state);
-                goto_list.push_back(state2);
-            }
-        }
-        // Add default state
-        goto_list.push_back(-1);
-        goto_list.push_back(most_freq_state);
+        compr_goto_tbl_.data.emplace_back(-1, n_most_freq_state);
     }
 }
 
@@ -376,19 +367,6 @@ LRBuilder::PositionSet LRBuilder::calcClosure(const PositionSet& s) {
     return closure;
 }
 
-std::pair<unsigned, bool> LRBuilder::addState(const PositionSet& s) {
-    auto it = std::find_if(states_.begin(), states_.end(), [&s](const auto& s2) {
-        return s2.size() == s.size() && std::equal(s2.begin(), s2.end(), s.begin(),
-                                                   [](const auto& i1, const auto& i2) { return i1.first == i2.first; });
-    });
-    if (it != states_.end()) { return {static_cast<unsigned>(it - states_.begin()), false}; }
-    // Add new state
-    states_.push_back(s);
-    action_tbl_.emplace_back(grammar_.getTokenCount(), -1);
-    goto_tbl_.emplace_back(grammar_.getNontermCount(), -1);
-    return {static_cast<unsigned>(states_.size()) - 1, true};
-}
-
 void LRBuilder::buildFirstTable() {
     first_tbl_.resize(grammar_.getNontermCount());
 
@@ -463,8 +441,7 @@ void LRBuilder::printAetaTable(std::ostream& outp) {
     outp << std::endl;
 }
 
-void LRBuilder::printStates(std::ostream& outp, const std::vector<int>& action_idx, const std::vector<int>& action_list,
-                            const std::vector<int>& goto_idx, const std::vector<int>& goto_list) {
+void LRBuilder::printStates(std::ostream& outp) {
     outp << "---=== LALR analyser states : ===---" << std::endl << std::endl;
     for (unsigned n_state = 0; n_state < states_.size(); n_state++) {
         outp << "State " << n_state << ':' << std::endl;
@@ -476,32 +453,32 @@ void LRBuilder::printStates(std::ostream& outp, const std::vector<int>& action_i
         }
         outp << std::endl;
 
-        // Action
-        for (const int* action_tbl = &action_list[action_idx[n_state]];; action_tbl += 2) {
-            int token = action_tbl[0], action = action_tbl[1];
-            outp << "    " << grammar_.symbolText(token >= 0 ? token : kTokenDefault) << ", ";
-            if (action < 0) {
-                outp << "error" << std::endl;
-            } else if (action & kShiftBit) {
-                outp << "shift and goto state " << (action >> kActionTblFlagCount) << std::endl;
-            } else if (action == 0) {
-                outp << "accept" << std::endl;
-            } else {
-                outp << "reduce using rule " << (action >> kActionTblFlagCount) / 3 << std::endl;
+        auto print_action = [&grammar = grammar_, &outp](unsigned token, const Action& action) {
+            outp << "    " << grammar.symbolText(token) << ", ";
+            switch (action.type) {
+                case Action::Type::kShift: outp << "shift and goto state " << action.val << std::endl; break;
+                case Action::Type::kError: outp << "error" << std::endl; break;
+                case Action::Type::kReduce: {
+                    if (action.val > 0) {
+                        outp << "reduce using rule " << action.val << std::endl;
+                    } else {
+                        outp << "accept" << std::endl;
+                    }
+                } break;
             }
-            if (token < 0) { break; }
-        }
+        };
+
+        // Action
+        auto it = compr_action_tbl_.data.begin() + compr_action_tbl_.index[n_state];
+        for (; it->first >= 0; ++it) { print_action(static_cast<unsigned>(it->first), it->second); }
+        print_action(kTokenDefault, it->second);
         outp << std::endl;
 
         // Goto
-        for (unsigned n = 0; n < grammar_.getNontermCount(); ++n) {
-            for (const int* goto_tbl = &goto_list[goto_idx[n]];; goto_tbl += 2) {
-                int from_state = goto_tbl[0], to_state = goto_tbl[1];
-                if (from_state < 0 || from_state == n_state) {
-                    outp << "    " << grammar_.getName(makeNontermId(n)) << ", goto state " << to_state << std::endl;
-                    break;
-                }
-            }
+        for (unsigned n = 0; n < compr_goto_tbl_.index.size(); ++n) {
+            auto it = std::find_if(compr_goto_tbl_.data.begin() + compr_goto_tbl_.index[n], compr_goto_tbl_.data.end(),
+                                   [n_state](const auto& item) { return item.first < 0 || item.first == n_state; });
+            outp << "    " << grammar_.getName(makeNontermId(n)) << ", goto state " << it->second << std::endl;
         }
         outp << std::endl;
     }

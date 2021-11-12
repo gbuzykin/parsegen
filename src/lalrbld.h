@@ -7,22 +7,33 @@
 #include <map>
 #include <vector>
 
-const int kShiftBit = 1;
-const int kActionTblFlagCount = 1;
-
 // LR table builder class
 class LRBuilder {
  public:
+    struct Action {
+        enum class Type { kShift = 0, kReduce, kError };
+        Type type = Type::kError;
+        unsigned val = 0;
+        friend bool operator==(const Action& a1, const Action& a2) { return a1.type == a2.type && a1.val == a2.val; }
+        friend bool operator!=(const Action& a1, const Action& a2) { return !(a1 == a2); }
+    };
+
+    template<typename Ty>
+    struct CompressedTable {
+        std::vector<unsigned> index;
+        std::vector<std::pair<int, Ty>> data;
+    };
+
     explicit LRBuilder(const Grammar& grammar) : grammar_(grammar) {}
     void buildAnalizer();
-    void compressTables(std::vector<int>& action_idx, std::vector<int>& action_list, std::vector<int>& goto_idx,
-                        std::vector<int>& goto_list);
+    unsigned getStateCount() const { return static_cast<unsigned>(states_.size()); }
     unsigned getSRConflictCount() const { return sr_conflict_count_; }
     unsigned getRRConflictCount() const { return rr_conflict_count_; }
+    const CompressedTable<Action>& getCompressedActionTable() { return compr_action_tbl_; }
+    const CompressedTable<unsigned>& getCompressedGotoTable() { return compr_goto_tbl_; }
     void printFirstTable(std::ostream& outp);
     void printAetaTable(std::ostream& outp);
-    void printStates(std::ostream& outp, const std::vector<int>& action_idx, const std::vector<int>& action,
-                     const std::vector<int>& goto_idx, const std::vector<int>& goto_list);
+    void printStates(std::ostream& outp);
 
  protected:
     struct Position {
@@ -54,13 +65,14 @@ class LRBuilder {
     std::vector<ValueSet> Aeta_tbl_;
 
     std::vector<PositionSet> states_;
-    std::vector<std::vector<int>> action_tbl_;
-    std::vector<std::vector<int>> goto_tbl_;
+    CompressedTable<Action> compr_action_tbl_;
+    CompressedTable<unsigned> compr_goto_tbl_;
 
+    void makeCompressedTables(const std::vector<std::vector<Action>>& action_tbl,
+                              const std::vector<std::vector<unsigned>>& goto_tbl);
     ValueSet calcFirst(const std::vector<unsigned>& seq, unsigned pos = 0);
     PositionSet calcGoto(const PositionSet& s, unsigned symb);
     PositionSet calcClosure(const PositionSet& s);
-    std::pair<unsigned, bool> addState(const PositionSet& s);
     void buildFirstTable();
     void buildAetaTable();
 };
