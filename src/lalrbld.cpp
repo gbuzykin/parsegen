@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <sstream>
+#include <tuple>
 
 [[nodiscard]] std::string str2text(std::string_view s) {
     std::string text;
@@ -335,11 +336,8 @@ void LRBuilder::buildAnalizer() {
 
     // Add initial unmarked state
     int state_idx;
-    std::set<Item> new_state;
-    Item initial_item;
-    initial_item.prod_no = 0;
-    initial_item.pos = 0;
-    new_state.insert(initial_item);
+    State new_state;
+    new_state.emplace(std::piecewise_construct, std::make_tuple(0, 0), std::tuple<>());
     addState(new_state, state_idx);
     unmarked_states.push_back(0);
 
@@ -373,24 +371,20 @@ void LRBuilder::buildAnalizer() {
 
     // Calculate initial lookahead sets and generate transferings
     assert(states_[0].size() > 0);
-    const_cast<Item&>(*states_[0].begin()).la.addValue(0);  // Add $end symbol to the lookahead set of
-                                                            // the $accept -> start production
+    states_[0].begin()->second.la.addValue(0);  // Add $end symbol to the lookahead set of
+                                                // the $accept -> start production
     int state_count = (int)states_.size();
     for (int state_idx = 0; state_idx < state_count; state_idx++) {
-        std::set<Item>::const_iterator it = states_[state_idx].begin();
+        auto it = states_[state_idx].begin();
         while (it != states_[state_idx].end()) {
             // item = [B -> gamma . delta, #]
-            Item item;
-            item.prod_no = it->prod_no;
-            item.pos = it->pos;
-            item.la.addValue(idDefault);
-            std::set<Item> closure;
+            State closure;
             // closure = calcClosure(item)
-            calcClosure(item, closure);
-            std::set<Item>::const_iterator it2 = closure.begin();
+            calcClosure(it->first, idDefault, closure);
+            auto it2 = closure.begin();
             while (it2 != closure.end()) {
-                int prod_no = it2->prod_no;
-                int next_ch_idx = grammar_idx_[prod_no] + it2->pos + 1;
+                int prod_no = it2->first.prod_no;
+                int next_ch_idx = grammar_idx_[prod_no] + it2->first.pos + 1;
                 assert(next_ch_idx <= grammar_idx_[prod_no + 1]);
                 if (next_ch_idx < grammar_idx_[prod_no + 1])  // Not final position
                 {
@@ -403,18 +397,16 @@ void LRBuilder::buildAnalizer() {
                     assert(goto_st != -1);
 
                     // *it2 is A -> alpha . X beta
-                    Item goto_item = *it2;
-                    goto_item.pos++;
                     // goto_item is A -> alpha X . beta
-                    std::set<Item>::iterator it3 = states_[goto_st].find(goto_item);  // Find goto_item in goto(*it2, X)
+                    auto it3 = states_[goto_st].find(
+                        {it2->first.prod_no, it2->first.pos + 1});  // Find goto_item in goto(*it2, X)
                     assert(it3 != states_[goto_st].end());
-                    ValueSet la = goto_item.la;
-                    if (la.contains(idDefault))  // If '#' belongs la
-                    {
-                        const_cast<Item&>(*it3).accept_la.push_back(&(*it));
+                    ValueSet la = it2->second.la;
+                    if (la.contains(idDefault)) {  // If '#' belongs la
+                        it3->second.accept_la.push_back(&it->second);
                         la.removeValue(idDefault);
                     }
-                    const_cast<Item&>(*it3).la |= la;
+                    it3->second.la |= la;
                 }
                 it2++;
             }
@@ -427,13 +419,13 @@ void LRBuilder::buildAnalizer() {
     do {
         change = false;
         for (state_idx = 0; state_idx < state_count; state_idx++) {
-            std::set<Item>::iterator it = states_[state_idx].begin();
+            auto it = states_[state_idx].begin();
             while (it != states_[state_idx].end()) {
                 // Accept lookahead characters
-                for (int item = 0; item < (int)it->accept_la.size(); item++) {
-                    ValueSet new_la = it->accept_la[item]->la - it->la;
+                for (int item = 0; item < (int)it->second.accept_la.size(); item++) {
+                    ValueSet new_la = it->second.accept_la[item]->la - it->second.la;
                     if (!new_la.empty()) {
-                        const_cast<Item&>(*it).la |= new_la;
+                        it->second.la |= new_la;
                         change = true;
                     }
                 }
@@ -447,15 +439,15 @@ void LRBuilder::buildAnalizer() {
     int sr_conflict_count = 0;
     int rr_conflict_count = 0;
     for (state_idx = 0; state_idx < state_count; state_idx++) {
-        std::set<Item> closure;
+        State closure;
         calcClosureSet(states_[state_idx], closure);
-        std::set<Item>::const_iterator it = closure.begin();
+        auto it = closure.begin();
         while (it != closure.end()) {
-            int prod_no = it->prod_no;
-            int next_ch_idx = grammar_idx_[prod_no] + it->pos + 1;
+            int prod_no = it->first.prod_no;
+            int next_ch_idx = grammar_idx_[prod_no] + it->first.pos + 1;
             assert(next_ch_idx <= grammar_idx_[prod_no + 1]);
             if (next_ch_idx == grammar_idx_[prod_no + 1]) {  // Final position
-                for (unsigned ch : it->la) {
+                for (unsigned ch : it->second.la) {
                     int old_val = action_tbl_[state_idx][ch];
                     if (old_val == -1)
                         action_tbl_[state_idx][ch] = maskReduce | prod_no;  // Reduce(prod_no)
@@ -502,7 +494,7 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
         int state2;
         bool found = false;
         for (state2 = 0; state2 < state; state2++) {
-            found = equal(action_tbl_[state].begin(), action_tbl_[state].end(), action_tbl_[state2].begin());
+            found = std::equal(action_tbl_[state].begin(), action_tbl_[state].end(), action_tbl_[state2].begin());
             if (found) break;  // Found
         }
         if (!found) {
@@ -702,8 +694,8 @@ void LRBuilder::genFirstTbl() {
             int left = grammar_[grammar_idx_[prod_no]];
             assert(left & maskNonterm);
             std::vector<int> right;
-            copy(grammar_.begin() + grammar_idx_[prod_no] + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
-                 back_inserter(right));
+            std::copy(grammar_.begin() + grammar_idx_[prod_no] + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
+                      std::back_inserter(right));
             ValueSet& cur_first_set = first_tbl_[left & maskId];
 
             ValueSet first;
@@ -751,15 +743,15 @@ void LRBuilder::genAetaTbl() {
     } while (change);  // Do until no changes have been made
 }
 
-void LRBuilder::calcGoto(const std::set<Item>& src, int ch, std::set<Item>& tgt) {
+void LRBuilder::calcGoto(const State& src, int ch, State& tgt) {
     tgt.clear();
     ValueSet nonkern;
 
     // Look through source items
-    std::set<Item>::const_iterator it = src.begin();
+    auto it = src.begin();
     while (it != src.end()) {
-        int prod_no = it->prod_no;
-        int next_ch_idx = grammar_idx_[prod_no] + it->pos + 1;
+        int prod_no = it->first.prod_no;
+        int next_ch_idx = grammar_idx_[prod_no] + it->first.pos + 1;
         assert(next_ch_idx <= grammar_idx_[prod_no + 1]);
         if (next_ch_idx < grammar_idx_[prod_no + 1])  // Not final position
         {
@@ -767,10 +759,8 @@ void LRBuilder::calcGoto(const std::set<Item>& src, int ch, std::set<Item>& tgt)
             if (next_ch & maskNonterm)  // The next character is nonterminal
                 nonkern |= Aeta_tbl_[next_ch & maskId];
             if (next_ch == ch) {
-                Item item;
-                item.prod_no = prod_no;
-                item.pos = it->pos + 1;
-                tgt.insert(item);  // Add to goto(src, ch)
+                tgt.emplace(std::piecewise_construct, std::make_tuple(prod_no, it->first.pos + 1),
+                            std::tuple<>());  // Add to goto(src, ch)
             }
         }
         it++;
@@ -786,30 +776,28 @@ void LRBuilder::calcGoto(const std::set<Item>& src, int ch, std::set<Item>& tgt)
         {
             int right = grammar_[grammar_idx_[prod_no] + 1];
             if (right == ch) {
-                Item item;
-                item.prod_no = prod_no;
-                item.pos = 1;
-                tgt.insert(item);  // Add to goto(src, ch)
+                tgt.emplace(std::piecewise_construct, std::make_tuple(prod_no, 1),
+                            std::tuple<>());  // Add to goto(src, ch)
             }
         }
     }
 }
 
-void LRBuilder::calcClosure(const Item& src, std::set<Item>& closure) {
-    std::set<Item> src_set;
-    src_set.insert(src);
-    calcClosureSet(src_set, closure);
+void LRBuilder::calcClosure(const StateItemPos& pos, int tk, State& closure) {
+    StateItem item;
+    item.la.addValue(tk);
+    calcClosureSet({{pos, item}}, closure);
 }
 
-void LRBuilder::calcClosureSet(const std::set<Item>& src, std::set<Item>& closure) {
+void LRBuilder::calcClosureSet(const State& src, State& closure) {
     ValueSet nonkern;
     std::vector<ValueSet> nonterm_la(nonterm_count_);
     closure = src;
     // Look through kernel items
-    std::set<Item>::const_iterator it = src.begin();
+    auto it = src.begin();
     while (it != src.end()) {
-        int prod_no = it->prod_no;
-        int next_ch_idx = grammar_idx_[prod_no] + it->pos + 1;
+        int prod_no = it->first.prod_no;
+        int next_ch_idx = grammar_idx_[prod_no] + it->first.pos + 1;
         assert(next_ch_idx <= grammar_idx_[prod_no + 1]);
         if (next_ch_idx < grammar_idx_[prod_no + 1])  // Not final position
         {
@@ -822,12 +810,12 @@ void LRBuilder::calcClosureSet(const std::set<Item>& src, std::set<Item>& closur
                 ValueSet la;
                 std::vector<int> seq;
                 // seq = beta
-                copy(grammar_.begin() + next_ch_idx + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
-                     back_inserter(seq));
+                std::copy(grammar_.begin() + next_ch_idx + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
+                          std::back_inserter(seq));
                 calcFirst(seq, la);  // Calculate FIRST(beta);
                 if (la.contains(idEmpty)) {
                     la.removeValue(idEmpty);
-                    la |= it->la;  // Replace $empty with LA(item)
+                    la |= it->second.la;  // Replace $empty with LA(item)
                 }
                 nonterm_la[next_ch & maskId] |= la;
             }
@@ -858,8 +846,8 @@ void LRBuilder::calcClosureSet(const std::set<Item>& src, std::set<Item>& closur
                     ValueSet la;
                     std::vector<int> seq;
                     // seq = beta
-                    copy(grammar_.begin() + grammar_idx_[prod_no] + 2, grammar_.begin() + grammar_idx_[prod_no + 1],
-                         back_inserter(seq));
+                    std::copy(grammar_.begin() + grammar_idx_[prod_no] + 2,
+                              grammar_.begin() + grammar_idx_[prod_no + 1], std::back_inserter(seq));
                     calcFirst(seq, la);  // Calculate FIRST(beta);
                     if (la.contains(idEmpty)) {
                         la.removeValue(idEmpty);
@@ -880,21 +868,19 @@ void LRBuilder::calcClosureSet(const std::set<Item>& src, std::set<Item>& closur
     for (prod_no = 0; prod_no < prod_count; prod_no++) {
         int left = grammar_[grammar_idx_[prod_no]];
         assert(left & maskNonterm);
-        if (nonkern.contains(left & maskId))  // Is production of nonkernel item
-        {
-            Item item;
-            item.prod_no = prod_no;
-            item.pos = 0;
-            item.la = nonterm_la[left & maskId];
-            closure.insert(item);
+        if (nonkern.contains(left & maskId)) {  // Is production of nonkernel item
+            closure.emplace(std::piecewise_construct, std::make_tuple(prod_no, 0),
+                            std::forward_as_tuple(nonterm_la[left & maskId]));
         }
     }
 }
 
-bool LRBuilder::addState(const std::set<Item>& s, int& state_idx) {
+bool LRBuilder::addState(const State& s, int& state_idx) {
     int state, state_count = (int)states_.size();
     for (state = 0; state < state_count; state++) {
-        if ((states_[state].size() == s.size()) && equal(states_[state].begin(), states_[state].end(), s.begin())) {
+        if ((states_[state].size() == s.size()) &&
+            std::equal(states_[state].begin(), states_[state].end(), s.begin(),
+                       [](const auto& i1, const auto& i2) { return i1.first == i2.first; })) {
             state_idx = state;  // Return old state index
             return false;
         }
@@ -941,8 +927,8 @@ void LRBuilder::printProduction(std::ostream& outp, int prod_no, int pos /*= -1*
     int left = grammar_[grammar_idx_[prod_no]];
     assert(left & maskNonterm);
     std::vector<int> right;
-    copy(grammar_.begin() + grammar_idx_[prod_no] + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
-         back_inserter(right));
+    std::copy(grammar_.begin() + grammar_idx_[prod_no] + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
+              std::back_inserter(right));
     outp << "    (" << prod_no << ") " << grammarSymbolText(left) << " -> ";
     int i;
     if (pos != -1) {
@@ -954,12 +940,12 @@ void LRBuilder::printProduction(std::ostream& outp, int prod_no, int pos /*= -1*
     }
 }
 
-void LRBuilder::printItemSet(std::ostream& outp, const std::set<Item>& item) {
-    std::set<Item>::const_iterator it = item.begin();
+void LRBuilder::printItemSet(std::ostream& outp, const State& item) {
+    auto it = item.begin();
     while (it != item.end()) {
-        printProduction(outp, it->prod_no, it->pos);
+        printProduction(outp, it->first.prod_no, it->first.pos);
         outp << "[ ";
-        for (unsigned la_ch : it->la) { outp << grammarSymbolText(la_ch) << " "; }
+        for (unsigned la_ch : it->second.la) { outp << grammarSymbolText(la_ch) << " "; }
         outp << "]" << std::endl;
         it++;
     }

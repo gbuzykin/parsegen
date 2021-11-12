@@ -4,7 +4,7 @@
 #include "valset.h"
 
 #include <iostream>
-#include <set>
+#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -23,23 +23,6 @@ const int maskPrec = 0x0FFF;
 
 const int maskReduce = 0x1000;
 const int idNonassocError = 0x2000;
-
-struct Item {
-    int prod_no, pos;
-    ValueSet la;
-    std::vector<const Item*> accept_la;
-    friend bool operator<(const Item& i1, const Item& i2) {
-        if (i1.prod_no < i2.prod_no) return true;
-        if ((i1.prod_no == i2.prod_no) && (i1.pos < i2.pos)) return true;
-        return false;
-    };
-    friend bool operator==(const Item& i1, const Item& i2) {
-        return ((i1.prod_no == i2.prod_no) && (i1.pos == i2.pos));
-    };
-    friend bool operator!=(const Item& i1, const Item& i2) {
-        return ((i1.prod_no != i2.prod_no) || (i1.pos != i2.pos));
-    };
-};
 
 // LR table builder class
 class LRBuilder {
@@ -63,6 +46,26 @@ class LRBuilder {
                      std::vector<int>& goto_idx, std::vector<int>& goto_list);
 
  protected:
+    struct StateItemPos {
+        StateItemPos(int in_prod_no, int in_pos) : prod_no(in_prod_no), pos(in_pos) {}
+        int prod_no, pos;
+        friend bool operator==(const StateItemPos& p1, const StateItemPos& p2) {
+            return p1.prod_no == p2.prod_no && p1.pos == p2.pos;
+        };
+        friend bool operator<(const StateItemPos& p1, const StateItemPos& p2) {
+            return p1.prod_no < p2.prod_no || (p1.prod_no == p2.prod_no && p1.pos < p2.pos);
+        };
+    };
+
+    struct StateItem {
+        StateItem() = default;
+        explicit StateItem(const ValueSet& in_la) : la(in_la) {}
+        ValueSet la;
+        std::vector<const StateItem*> accept_la;
+    };
+
+    using State = std::map<StateItemPos, StateItem>;
+
     std::unordered_map<std::string, std::string> options_;
 
     std::string err_string_;
@@ -82,7 +85,7 @@ class LRBuilder {
     std::vector<ValueSet> first_tbl_;
     std::vector<ValueSet> Aeta_tbl_;
 
-    std::vector<std::set<Item>> states_;
+    std::vector<State> states_;
     std::vector<std::vector<int>> action_tbl_;
     std::vector<std::vector<int>> goto_tbl_;
 
@@ -90,17 +93,17 @@ class LRBuilder {
     void calcFirst(const std::vector<int>& seq, ValueSet& first);
     void genFirstTbl();
     void genAetaTbl();
-    void calcGoto(const std::set<Item>&, int, std::set<Item>&);
-    void calcClosure(const Item& src, std::set<Item>& closure);
-    void calcClosureSet(const std::set<Item>& src, std::set<Item>& closure);
-    bool addState(const std::set<Item>&, int&);
+    void calcGoto(const State&, int, State&);
+    void calcClosure(const StateItemPos& pos, int tk, State& closure);
+    void calcClosureSet(const State& src, State& closure);
+    bool addState(const State&, int&);
 
     [[nodiscard]] std::string grammarSymbolText(int id);
     [[nodiscard]] std::string actionNameText(int id);
     [[nodiscard]] std::string precedenceText(int prec);
 
     void printProduction(std::ostream&, int, int pos = -1);
-    void printItemSet(std::ostream&, const std::set<Item>&);
+    void printItemSet(std::ostream&, const State&);
 
     int errorSyntax(int);
     int errorNameRedef(int, const std::string&);
