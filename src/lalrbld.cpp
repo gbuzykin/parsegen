@@ -448,10 +448,8 @@ void LRBuilder::buildAnalizer() {
             int prod_no = it->prod_no;
             int next_ch_idx = grammar_idx_[prod_no] + it->pos + 1;
             assert(next_ch_idx <= grammar_idx_[prod_no + 1]);
-            if (next_ch_idx == grammar_idx_[prod_no + 1])  // Final position
-            {
-                int ch = it->la.getFirstValue();
-                while (ch != -1) {
+            if (next_ch_idx == grammar_idx_[prod_no + 1]) {  // Final position
+                for (unsigned ch : it->la) {
                     int old_val = action_tbl_[state_idx][ch];
                     if (old_val == -1)
                         action_tbl_[state_idx][ch] = maskReduce | prod_no;  // Reduce(prod_no)
@@ -474,7 +472,6 @@ void LRBuilder::buildAnalizer() {
                         // Reduce-reduce conflict
                         rr_conflict_count++;
                     }
-                    ch = it->la.getNextValue(ch);
                 }
             }
             it++;
@@ -963,11 +960,7 @@ void LRBuilder::printItemSet(std::ostream& outp, const std::set<Item>& item) {
     while (it != item.end()) {
         printProduction(outp, it->prod_no, it->pos);
         outp << "[ ";
-        int la_ch = it->la.getFirstValue();
-        while (la_ch != -1) {
-            outp << grammarSymbolText(la_ch) << " ";
-            la_ch = it->la.getNextValue(la_ch);
-        }
+        for (unsigned la_ch : it->la) { outp << grammarSymbolText(la_ch) << " "; }
         outp << "]" << std::endl;
         it++;
     }
@@ -1019,13 +1012,11 @@ void LRBuilder::printFirstTbl(std::ostream& outp) {
     for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
         outp << "    FIRST(" << grammarSymbolText(maskNonterm | nonterm) << ") = { ";
         const ValueSet& first = first_tbl_[nonterm];
-        int ch = first.getFirstValue();
         bool colon = false;
-        while (ch != -1) {
+        for (unsigned ch : first) {
             if (colon) { outp << ", "; }
             outp << grammarSymbolText(ch);
             colon = true;
-            ch = first.getNextValue(ch);
         }
         outp << " }" << std::endl;
     }
@@ -1037,13 +1028,11 @@ void LRBuilder::printAetaTbl(std::ostream& outp) {
     for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
         outp << "    Aeta(" << grammarSymbolText(maskNonterm | nonterm) << ") = { ";
         const ValueSet& Aeta = Aeta_tbl_[nonterm];
-        int ch = Aeta.getFirstValue();
         bool colon = false;
-        while (ch != -1) {
+        for (unsigned ch : Aeta) {
             if (colon) { outp << ", "; }
             outp << grammarSymbolText(maskNonterm | ch);
             colon = true;
-            ch = Aeta.getNextValue(ch);
         }
         outp << " }" << std::endl;
     }
