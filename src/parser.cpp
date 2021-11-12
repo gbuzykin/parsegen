@@ -30,15 +30,15 @@ int Parser::parse() {
         switch (tt) {
             case tt_token: {  // Token definition
                 if ((tt = lex()) != tt_id) { return logSyntaxError(tt); }
-                if (!grammar_.addToken(std::string(std::get<std::string_view>(tkn_val_))).second) {
-                    return logError() << "name is already used.";
+                if (!grammar_.addToken(std::string(std::get<std::string_view>(tkn_.val))).second) {
+                    return logError() << "name is already used";
                 }
                 tt = lex();
             } break;
             case tt_action: {  // Action definition
                 if ((tt = lex()) != tt_id) { return logSyntaxError(tt); }
-                if (!grammar_.addAction(std::string(std::get<std::string_view>(tkn_val_))).second) {
-                    return logError() << "name is already used.";
+                if (!grammar_.addAction(std::string(std::get<std::string_view>(tkn_.val))).second) {
+                    return logError() << "name is already used";
                 }
                 tt = lex();
             } break;
@@ -56,25 +56,25 @@ int Parser::parse() {
                     switch (tt = lex()) {
                         case tt_id:
                         case tt_internal_id: {
-                            id = grammar_.addToken(std::string(std::get<std::string_view>(tkn_val_))).first;
+                            id = grammar_.addToken(std::string(std::get<std::string_view>(tkn_.val))).first;
                         } break;
                         case tt_symb: {
-                            id = std::get<unsigned>(tkn_val_);
+                            id = std::get<unsigned>(tkn_.val);
                         } break;
                     }
                     if (id == 0) { break; }
 
                     if (!grammar_.setTokenPrecAndAssoc(id, prec, assoc)) {
-                        return logError() << "token precedence is already defined.";
+                        return logError() << "token precedence is already defined";
                     }
                 }
                 prec++;
             } break;
             case tt_option: {  // Option
                 if ((tt = lex()) != tt_id) { return logSyntaxError(tt); }
-                std::string_view name = std::get<std::string_view>(tkn_val_);
+                std::string_view name = std::get<std::string_view>(tkn_.val);
                 if ((tt = lex()) != tt_string) { return logSyntaxError(tt); }
-                options_.emplace(name, std::get<std::string_view>(tkn_val_));
+                options_.emplace(name, std::get<std::string_view>(tkn_.val));
                 tt = lex();
             } break;
             case tt_sep: break;
@@ -86,8 +86,8 @@ int Parser::parse() {
     do {
         // Read left part of the production
         if ((tt = lex()) == tt_id) {
-            unsigned left = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_val_))).first;
-            if (!isNonterm(left)) { return logError() << "name is already used for tokens or actions."; }
+            unsigned left = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
+            if (!isNonterm(left)) { return logError() << "name is already used for tokens or actions"; }
 
             if (lex() != ':') { return logSyntaxError(tt); }
 
@@ -103,48 +103,48 @@ int Parser::parse() {
                             switch (tt = lex()) {
                                 case tt_token_id:
                                 case tt_internal_id: {
-                                    if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_val_));
+                                    if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
                                         found_id && isToken(*found_id)) {
                                         id = *found_id;
                                     } else {
-                                        return logError() << "undefined token.";
+                                        return logError() << "undefined token";
                                     }
                                 } break;
                                 case tt_symb: {
-                                    id = std::get<unsigned>(tkn_val_);
+                                    id = std::get<unsigned>(tkn_.val);
                                 } break;
                                 default: return logSyntaxError(tt);
                             }
 
                             prec = grammar_.getTokenInfo(id).prec;
-                            if (prec < 0) { return logError() << "token precedence is not defined."; }
+                            if (prec < 0) { return logError() << "token precedence is not defined"; }
                         } break;
                         case tt_id: {  // Nonterminal
-                            auto id = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_val_))).first;
-                            if (!isNonterm(id)) { return logError() << "name is already used for tokens or actions."; }
+                            auto id = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
+                            if (!isNonterm(id)) { return logError() << "name is already used for tokens or actions"; }
                             right.push_back(id);
                         } break;
                         case tt_token_id:
                         case tt_predef_id: {  // Token
-                            if (tt == tt_predef_id && std::get<std::string_view>(tkn_val_) != "$error") {
+                            if (tt == tt_predef_id && std::get<std::string_view>(tkn_.val) != "$error") {
                                 return logSyntaxError(tt);
                             }
-                            if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_val_));
+                            if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
                                 found_id && isToken(*found_id)) {
                                 right.push_back(*found_id);
                             } else {
-                                return logError() << "undefined token.";
+                                return logError() << "undefined token";
                             }
                         } break;
                         case tt_symb: {  // Single symbol
-                            right.push_back(std::get<unsigned>(tkn_val_));
+                            right.push_back(std::get<unsigned>(tkn_.val));
                         } break;
                         case tt_action_id: {  // Action
-                            if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_val_));
+                            if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
                                 found_id && isAction(*found_id)) {
                                 right.push_back(*found_id);
                             } else {
-                                return logError() << "undefined action.";
+                                return logError() << "undefined action";
                             }
                         } break;
                         case '|':
@@ -164,13 +164,11 @@ int Parser::parse() {
     const auto& nonterm_used = grammar_.getUsedNonterms();
     const auto& nonterm_defined = grammar_.getDefinedNonterms();
     for (unsigned n : nonterm_defined - nonterm_used) {
-        std::cerr << file_name_ << ": warning: unused nonterminal `" << grammar_.getName(makeNontermId(n)) << "`."
-                  << std::endl;
+        Log(Log::MsgType::kWarning, this) << "unused nonterminal \'" << grammar_.getName(makeNontermId(n)) << "\'";
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
         for (unsigned n : undef) {
-            std::cerr << file_name_ << ": error: undefined nonterminal `" << grammar_.getName(makeNontermId(n)) << "`."
-                      << std::endl;
+            Log(Log::MsgType::kError, this) << "undefined nonterminal \'" << grammar_.getName(makeNontermId(n)) << "\'";
         }
         return false;
     }
@@ -179,14 +177,14 @@ int Parser::parse() {
 
 int Parser::lex() {
     const char* str_start = nullptr;
-    tkn_col_ = n_col_;
+    tkn_.loc = {n_line_, n_col_};
 
     while (true) {
         if (lex_ctx_.out_last > text_.get() && *(lex_ctx_.out_last - 1) == '\n') {
             current_line_.assign(lex_ctx_.in_next, std::find_if(lex_ctx_.in_next, lex_ctx_.in_boundary,
                                                                 [](char ch) { return ch == '\n' || ch == '\0'; }));
-            tkn_col_ = n_col_ = 1;
-            ++n_line_;
+            ++n_line_, n_col_ = 1;
+            tkn_.loc = {n_line_, n_col_};
         }
         lex_ctx_.out_first = lex_ctx_.out_last;
         int pat = lex_detail::lex(lex_ctx_, lex_state_stack_);
@@ -221,18 +219,18 @@ int Parser::lex() {
             } break;
             case lex_detail::pat_string_seq: break;
             case lex_detail::pat_string_close: {
-                tkn_val_ = std::string_view(str_start, lex_ctx_.out_first - str_start);
+                tkn_.val = std::string_view(str_start, lex_ctx_.out_first - str_start);
                 lex_state_stack_.pop_back();
                 return tt_string;
             } break;
 
             // ------ symbols
             case lex_detail::pat_symb: {
-                tkn_val_ = 0;
+                tkn_.val = 0;
                 lex_state_stack_.push_back(lex_detail::sc_symb);
             } break;
             case lex_detail::pat_symb_other: {
-                tkn_val_ = static_cast<unsigned char>(*lex_ctx_.out_first);
+                tkn_.val = static_cast<unsigned char>(*lex_ctx_.out_first);
             } break;
             case lex_detail::pat_symb_close: {
                 lex_state_stack_.pop_back();
@@ -241,23 +239,23 @@ int Parser::lex() {
 
             // ------ identifiers
             case lex_detail::pat_id: {
-                tkn_val_ = std::string_view(lex_ctx_.out_first, lexeme_len);
+                tkn_.val = std::string_view(lex_ctx_.out_first, lexeme_len);
                 return tt_id;
             } break;
             case lex_detail::pat_predef_id: {
-                tkn_val_ = std::string_view(lex_ctx_.out_first, lexeme_len);
+                tkn_.val = std::string_view(lex_ctx_.out_first, lexeme_len);
                 return tt_predef_id;
             } break;
             case lex_detail::pat_internal_id: {
-                tkn_val_ = std::string_view(lex_ctx_.out_first, lexeme_len);
+                tkn_.val = std::string_view(lex_ctx_.out_first, lexeme_len);
                 return tt_internal_id;
             } break;
             case lex_detail::pat_token_id: {  // [id]
-                tkn_val_ = std::string_view(lex_ctx_.out_first + 1, lexeme_len - 2);
+                tkn_.val = std::string_view(lex_ctx_.out_first + 1, lexeme_len - 2);
                 return tt_token_id;
             } break;
             case lex_detail::pat_action_id: {  // {id}
-                tkn_val_ = std::string_view(lex_ctx_.out_first + 1, lexeme_len - 2);
+                tkn_.val = std::string_view(lex_ctx_.out_first + 1, lexeme_len - 2);
                 return tt_action_id;
             } break;
 
@@ -278,7 +276,7 @@ int Parser::lex() {
             case lex_detail::pat_sep: return tt_sep;
             case lex_detail::pat_other: return static_cast<unsigned char>(*lex_ctx_.out_first);
             case lex_detail::pat_eof: return tt_eof;
-            case lex_detail::pat_whitespace: tkn_col_ = n_col_; break;
+            case lex_detail::pat_whitespace: tkn_.loc.n_col = n_col_; break;
             case lex_detail::pat_nl: break;
             case lex_detail::pat_unterminated_token: return tt_unterminated_token;
             default: return -1;
@@ -290,32 +288,48 @@ int Parser::lex() {
                 *lex_ctx_.out_first = *escape;
                 lex_ctx_.out_last = lex_ctx_.out_first + 1;
             } else {
-                tkn_val_ = static_cast<unsigned char>(*escape);
+                tkn_.val = static_cast<unsigned char>(*escape);
             }
         }
     }
     return tt_eof;
 }
 
-int Parser::logSyntaxError(int tt) {
+int Parser::logSyntaxError(int tt) const {
+    std::string_view msg;
     switch (tt) {
-        case tt_eof: return logError() << "unexpected end of file";
-        case tt_unterminated_token: return logError() << "unterminated token here";
+        case tt_eof: msg = "unexpected end of file"; break;
+        case tt_unterminated_token: msg = "unterminated token"; break;
+        default: msg = "unexpected token"; break;
     }
-    return logError() << "unexpected token here";
+    return logError() << msg;
 }
 
-void Parser::printError(const std::string& msg) {
-    std::cerr << file_name_ << ":" << n_line_ << ":" << tkn_col_ << ": error: " << msg << std::endl;
+void Log::printMessage(MsgType type, const TokenLoc& l, const std::string& msg) {
+    std::string msg_hdr(parser_ ? parser_->getFileName() : "parsegen");
+    std::string n_line = std::to_string(l.n_line);
+    if (l.n_line > 0 && l.n_col > 0) { msg_hdr += ':' + n_line + ':' + std::to_string(l.n_col); }
 
-    if (current_line_.empty()) { return; }
+    switch (type) {
+        case Log::MsgType::kDebug: msg_hdr += ": debug: "; break;
+        case Log::MsgType::kInfo: msg_hdr += ": info: "; break;
+        case Log::MsgType::kWarning: msg_hdr += ": warning: "; break;
+        case Log::MsgType::kError: msg_hdr += ": error: "; break;
+        case Log::MsgType::kFatal: msg_hdr += ": fatal error: "; break;
+    }
+
+    std::cerr << msg_hdr << msg << std::endl;
+    if (!parser_ || l.n_line == 0 || l.n_col == 0) { return; }
+
+    const auto& line = parser_->getCurrentLine();
+    if (line.empty()) { return; }
 
     uint32_t code = 0;
     const unsigned tab_size = 4;
-    unsigned col = 0, current_col = 0;
-    std::string tab2space_line, n_line = std::to_string(n_line_);
-    tab2space_line.reserve(current_line_.size());
-    for (auto p = current_line_.begin(), p1 = p; (p1 = detail::from_utf8(p, current_line_.end(), &code)) > p; p = p1) {
+    unsigned col = 0, pos_col = 0;
+    std::string tab2space_line;
+    tab2space_line.reserve(line.size());
+    for (auto p = line.begin(), p1 = p; (p1 = detail::from_utf8(p, line.end(), &code)) > p; p = p1) {
         if (code == '\t') {
             auto align_up = [](unsigned v, unsigned base) { return (v + base - 1) & ~(base - 1); };
             unsigned tab_pos = align_up(col + 1, tab_size);
@@ -324,9 +338,9 @@ void Parser::printError(const std::string& msg) {
             while (p < p1) { tab2space_line.push_back(*p++); }
             ++col;
         }
-        if (p - current_line_.begin() < tkn_col_) { current_col = col; }
+        if (p - line.begin() < l.n_col) { pos_col = col; }
     }
 
     std::cerr << " " << n_line << " | " << tab2space_line << std::endl;
-    std::cerr << std::string(n_line.size() + 1, ' ') << " | " << std::string(current_col, ' ') << "^" << std::endl;
+    std::cerr << std::string(n_line.size() + 1, ' ') << " | " << std::string(pos_col, ' ') << "^" << std::endl;
 }

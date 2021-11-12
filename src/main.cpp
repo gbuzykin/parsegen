@@ -136,19 +136,19 @@ int main(int argc, char** argv) {
             } else if (arg[0] != '-') {
                 input_file_name = argv[i];
             } else {
-                std::cerr << "parsegen: unknown flag `" << arg << "`." << std::endl;
+                Log(Log::MsgType::kFatal) << "unknown flag \'" << arg << "\'";
                 return -1;
             }
         }
 
         if (input_file_name.empty()) {
-            std::cerr << "parsegen: no input file specified." << std::endl;
+            Log(Log::MsgType::kFatal) << "no input file specified";
             return -1;
         }
 
         std::ifstream ifile(input_file_name);
         if (!ifile) {
-            std::cerr << "parsegen: cannot open input file `" << input_file_name << "`." << std::endl;
+            Log(Log::MsgType::kFatal) << "can\'t open input file \'" << input_file_name << "\'";
             return -1;
         }
 
@@ -161,12 +161,10 @@ int main(int argc, char** argv) {
         lr_builder.buildAnalizer();
 
         if (unsigned sr_count = lr_builder.getSRConflictCount(); sr_count > 0) {
-            std::cerr << input_file_name << ": warning: " << sr_count << " shift/reduce conflict(s) found."
-                      << std::endl;
+            Log(Log::MsgType::kWarning, &parser) << sr_count << " shift/reduce conflict(s) found";
         }
         if (unsigned rr_count = lr_builder.getRRConflictCount(); rr_count > 0) {
-            std::cerr << input_file_name << ": warning: " << rr_count << " shift/reduce conflict(s) found."
-                      << std::endl;
+            Log(Log::MsgType::kWarning, &parser) << rr_count << " shift/reduce conflict(s) found";
         }
 
         if (!report_file_name.empty()) {
@@ -179,7 +177,7 @@ int main(int argc, char** argv) {
                 lr_builder.printAetaTable(ofile);
                 lr_builder.printStates(ofile);
             } else {
-                std::cerr << "parsegen: cannot open output file `" << report_file_name << "`." << std::endl;
+                Log(Log::MsgType::kError) << "can\'t open report file \'" << report_file_name << "\'";
             }
         }
 
@@ -211,7 +209,7 @@ int main(int argc, char** argv) {
 
             outputParserDefs(ofile);
         } else {
-            std::cerr << "parsegen: cannot open output file `" << defs_file_name << "`." << std::endl;
+            Log(Log::MsgType::kError) << "can\'t open output file \'" << defs_file_name << "\'";
         }
 
         const auto& action_table = lr_builder.getCompressedActionTable();
@@ -258,10 +256,10 @@ int main(int argc, char** argv) {
             outputArray(ofile, "goto_list", goto_list.begin(), goto_list.end());
             outputParserEngine(ofile);
         } else {
-            std::cerr << "parsegen: cannot open output file `" << analyzer_file_name << "`." << std::endl;
+            Log(Log::MsgType::kError) << "can\'t open output file \'" << analyzer_file_name << "\'";
         }
 
         return 0;
-    } catch (const std::exception& e) { std::cerr << "parsegen: exception catched: " << e.what() << "." << std::endl; }
+    } catch (const std::exception& e) { Log(Log::MsgType::kFatal) << "exception catched: " << e.what(); }
     return -1;
 }

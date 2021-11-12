@@ -54,32 +54,53 @@ namespace lex_detail {
 #include "lex_defs.h"
 }
 
+struct TokenLoc {
+    unsigned n_line = 0;
+    unsigned n_col = 0;
+};
+
+class Parser;
+
+class Log {
+ public:
+    enum class MsgType { kDebug = 0, kInfo, kWarning, kError, kFatal };
+
+    explicit Log(MsgType type) : type_(type) {}
+    Log(MsgType type, const Parser* parser) : type_(type), parser_(parser) {}
+    Log(MsgType type, const Parser* parser, const TokenLoc& l) : type_(type), parser_(parser), loc_(l) {}
+    ~Log() { printMessage(type_, loc_, ss_.str()); }
+    Log(const Log&) = delete;
+    Log& operator=(const Log&) = delete;
+
+    template<typename Ty>
+    Log& operator<<(const Ty& v) {
+        ss_ << v;
+        return *this;
+    }
+    void printMessage(MsgType type, const TokenLoc& l, const std::string& msg);
+    operator int() const { return -1; }
+
+ private:
+    MsgType type_ = MsgType::kDebug;
+    const Parser* parser_ = nullptr;
+    TokenLoc loc_;
+    std::stringstream ss_;
+};
+
 // Input file parser class
 class Parser {
  public:
     Parser(std::istream& input, std::string file_name, Grammar& grammar);
     int parse();
+    std::string_view getFileName() const { return file_name_; }
+    std::string_view getCurrentLine() const { return current_line_; }
 
  private:
     using TokenVal = std::variant<unsigned, std::string_view>;
 
-    struct ErrorLogger {
-        Parser* parser;
-        std::stringstream ss;
-        explicit ErrorLogger(Parser* in_parser) : parser(in_parser) {}
-        ErrorLogger(ErrorLogger&& el) noexcept : parser(el.parser) { el.parser = nullptr; }
-        ~ErrorLogger() {
-            if (parser) { parser->printError(ss.str()); }
-        }
-        ErrorLogger(const ErrorLogger&) = delete;
-        ErrorLogger& operator=(const ErrorLogger&) = delete;
-        ErrorLogger& operator=(ErrorLogger&&) = delete;
-        template<typename Ty>
-        ErrorLogger& operator<<(const Ty& v) {
-            ss << v;
-            return *this;
-        }
-        operator int() const { return -1; }
+    struct TokenInfo {
+        TokenVal val;
+        TokenLoc loc;
     };
 
     std::istream& input_;
@@ -89,8 +110,7 @@ class Parser {
     unsigned n_line_ = 1, n_col_ = 1;
     lex_detail::CtxData lex_ctx_;
     std::vector<int> lex_state_stack_;
-    TokenVal tkn_val_;
-    unsigned tkn_col_ = 0;
+    TokenInfo tkn_;
     Grammar& grammar_;
     std::unordered_map<std::string_view, std::string_view> options_;
 
@@ -102,7 +122,7 @@ class Parser {
     }
 
     int lex();
-    int logSyntaxError(int tt);
-    ErrorLogger logError() { return ErrorLogger(this); }
-    void printError(const std::string& msg);
+    Log logWarning() const { return Log(Log::MsgType::kWarning, this, tkn_.loc); }
+    Log logError() const { return Log(Log::MsgType::kError, this, tkn_.loc); }
+    int logSyntaxError(int tt) const;
 };
