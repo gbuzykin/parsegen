@@ -3,8 +3,35 @@
 #include "lexer.h"
 
 #include <cassert>
-#include <fstream>
 #include <sstream>
+
+[[nodiscard]] std::string str2text(std::string_view s) {
+    std::string text;
+    for (unsigned char ch : s) {
+        switch (ch) {
+            case '\n': text += "\\n"; break;
+            case '\t': text += "\\t"; break;
+            case '\v': text += "\\v"; break;
+            case '\b': text += "\\b"; break;
+            case '\r': text += "\\r"; break;
+            case '\f': text += "\\f"; break;
+            case '\a': text += "\\a"; break;
+            case '\\': text += "\\\\"; break;
+            case '\'': text += "\\\'"; break;
+            case '\"': text += "\\\""; break;
+            default: {
+                if (ch < 0x20 || ch == 0x7F) {
+                    text += "\\x";
+                    text.push_back('0' + (ch >> 4) & 0xF);
+                    text.push_back('0' + ch & 0xF);
+                } else {
+                    text.push_back(ch);
+                }
+            } break;
+        }
+    }
+    return text;
+}
 
 int LRBuilder::loadGrammar(std::istream& inp) {
     name_tbl_.clear();
@@ -24,13 +51,6 @@ int LRBuilder::loadGrammar(std::istream& inp) {
     name_tbl_.insertName("error", id);
     token_used_[idEnd] = true;
     token_used_[idError] = true;
-
-    output_report_ = false;
-    class_name_ = "Parser";
-    tkn_file_name_ = "par_tkn.h";
-    act_file_name_ = "par_act.h";
-    tbl_file_name_ = "par_tbl.inl";
-    report_file_name_ = "report.txt";
 
     Lexer lexer(&inp);
     int tt = -1;
@@ -83,47 +103,10 @@ int LRBuilder::loadGrammar(std::istream& inp) {
             {
                 tt = lexer.lex();
                 if (tt != tt_id) return errorSyntax(lexer.getLineNo());
-                std::string opt_id = lexer.getLVal().str;
-                int opt_idx = -1;
-                if (opt_id == "report")
-                    opt_idx = 0;
-                else if (opt_id == "class_name")
-                    opt_idx = 1;
-                else if (opt_id == "tkn_file_name")
-                    opt_idx = 2;
-                else if (opt_id == "act_file_name")
-                    opt_idx = 3;
-                else if (opt_id == "tbl_file_name")
-                    opt_idx = 4;
-                else if (opt_id == "report_file_name")
-                    opt_idx = 5;
-                else
-                    return errorInvOption(lexer.getLineNo(), opt_id);
-
-                if (opt_idx != 0) {
-                    tt = lexer.lex();
-                    if (tt != '=') return errorSyntax(lexer.getLineNo());
-                    tt = lexer.lex();
-                    if (tt != tt_string) return errorSyntax(lexer.getLineNo());
-                    switch (opt_idx) {
-                        case 1:  // 'class_name' option
-                            class_name_ = lexer.getLVal().str;
-                            break;
-                        case 2:  // 'tkn_file_name' option
-                            tkn_file_name_ = lexer.getLVal().str;
-                            break;
-                        case 3:  // 'act_file_name' option
-                            act_file_name_ = lexer.getLVal().str;
-                            break;
-                        case 4:  // 'tbl_file_name' option
-                            tbl_file_name_ = lexer.getLVal().str;
-                            break;
-                        case 5:  // 'report_file_name' option
-                            report_file_name_ = lexer.getLVal().str;
-                            break;
-                    }
-                } else  // 'report' option
-                    output_report_ = true;
+                std::string opt_id(lexer.getLVal().str);
+                tt = lexer.lex();
+                if (tt != tt_string) return errorSyntax(lexer.getLineNo());
+                options_.emplace(std::move(opt_id), lexer.getLVal().str);
                 tt = -1;
             } break;
             case tt_left:      // '%left' definition
@@ -502,37 +485,163 @@ void LRBuilder::buildAnalizer() {
         std::cout << "Warning: " << sr_conflict_count << " shift/reduce conflict(s) found!" << std::endl;
     if (rr_conflict_count > 0)
         std::cout << "Warning: " << rr_conflict_count << " reduce/reduce conflict(s) found!" << std::endl;
+}
 
-    // Compress states
-    compressTables();
+void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& action_list, std::vector<int>& goto_idx,
+                               std::vector<int>& goto_list) {
+    // Compress action table :
 
-    if (output_report_) {
-        std::ofstream outp(report_file_name_.c_str());
-        if (outp) {
-            // Output tables
-            printTokens(outp);
-            printNonterms(outp);
-            printActions(outp);
-            printGrammar(outp);
-            printFirstTbl(outp);
-            printAetaTbl(outp);
-            printStates(outp);
+    int state, state_count = (int)action_tbl_.size();
+    action_list.clear();
+    action_idx.resize(state_count);
+    for (state = 0; state < state_count; state++) {
+        // Try to find equal state
+        int state2;
+        bool found = false;
+        for (state2 = 0; state2 < state; state2++) {
+            found = equal(action_tbl_[state].begin(), action_tbl_[state].end(), action_tbl_[state2].begin());
+            if (found) break;  // Found
+        }
+        if (!found) {
+            const std::vector<int>& line = action_tbl_[state];
+            action_idx[state] = (int)action_list.size();
+            int ch;
+
+            // Are there any reduce actions?
+            bool can_reduce = false;
+            int allowed_reduce_act = -1;
+            int err_count = 0;
+            for (ch = 0; ch < token_count_; ch++) {
+                int act = line[ch];
+                if (act == -1)
+                    err_count++;
+                else if (!can_reduce && (act & maskReduce)) {
+                    allowed_reduce_act = act;
+                    can_reduce = true;
+                }
+            }
+
+            // Find the most frequent action :
+
+            // Build histogram
+            std::map<int, int> histo;
+            for (ch = 0; ch < token_count_; ch++) {
+                int act = line[ch];
+                if (!can_reduce || (act != -1)) {
+                    int freq = 1;
+                    if (can_reduce && (act & maskReduce)) freq += err_count;
+                    std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(act, freq));
+                    if (!ins_res.second) ins_res.first->second++;
+                }
+            }
+            // Find maximum frequency
+            int max_freq = 0, most_freq_act = 0;
+            std::map<int, int>::const_iterator it = histo.begin();
+            while (it != histo.end()) {
+                if (it->second > max_freq) {
+                    max_freq = it->second;
+                    most_freq_act = it->first;
+                }
+                it++;
+            }
+
+            // Build list
+            for (ch = 0; ch < token_count_; ch++) {
+                int act = line[ch];
+                if (!can_reduce || (act != -1)) {
+                    if (act != most_freq_act) {
+                        action_list.push_back(ch);
+                        if (act == idNonassocError) act = -1;
+                        action_list.push_back(act);
+                    }
+                } else {
+                    if (!(most_freq_act & maskReduce)) {
+                        action_list.push_back(ch);
+                        action_list.push_back(allowed_reduce_act);
+                    }
+                }
+            }
+            // Add default action
+            action_list.push_back(idDefault);
+            action_list.push_back(most_freq_act);
         } else
-            std::cout << "Warning: cannot open file \'" << report_file_name_ << "\'!" << std::endl;
+            action_idx[state] = action_idx[state2];
     }
 
-    // Output definitions
-    outputDefinitions(tkn_file_name_, act_file_name_);
+    // Compress goto table :
 
-    // Output tables
-    outputTables(tbl_file_name_);
+    goto_list.clear();
+    goto_idx.resize(nonterm_count_);
+    for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
+        goto_idx[nonterm] = (int)goto_list.size();
 
-    // clear temporary arrays
-    first_tbl_.clear();
-    Aeta_tbl_.clear();
-    states_.clear();
-    action_tbl_.clear();
-    goto_tbl_.clear();
+        // Find the most frequent state :
+
+        std::map<int, int> histo;
+        // Build histogram
+        for (state = 0; state < state_count; state++) {
+            int new_state = goto_tbl_[state][nonterm];
+            if (new_state != -1) {
+                std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(new_state, 1));
+                if (!ins_res.second) ins_res.first->second++;
+            }
+        }
+        // Find maximum frequency
+        int max_freq = 0, most_freq_state = 0;
+        std::map<int, int>::const_iterator it = histo.begin();
+        while (it != histo.end()) {
+            if (it->second > max_freq) {
+                max_freq = it->second;
+                most_freq_state = it->first;
+            }
+            it++;
+        }
+
+        // Build list
+        for (state = 0; state < state_count; state++) {
+            int state2 = goto_tbl_[state][nonterm];
+            if ((state2 != -1) && (state2 != most_freq_state)) {
+                goto_list.push_back(state);
+                goto_list.push_back(state2);
+            }
+        }
+        // Add default state
+        goto_list.push_back(-1);
+        goto_list.push_back(most_freq_state);
+    }
+}
+
+std::vector<int> LRBuilder::getProdInfo() {
+    std::vector<int> prod_info;
+    int prod_no, prod_count = (int)grammar_idx_.size() - 1;
+    for (prod_no = 0; prod_no < prod_count; prod_no++) {
+        int left = grammar_[grammar_idx_[prod_no]];
+        assert(left & maskNonterm);
+        prod_info.push_back(grammar_idx_[prod_no + 1] - grammar_idx_[prod_no] - 1);  // Length
+        prod_info.push_back(left);                                                   // Left part
+        prod_info.push_back(act_on_reduce_[prod_no]);                                // Action on reduce
+    }
+    return prod_info;
+}
+
+std::vector<std::pair<std::string, int>> LRBuilder::getUsedTokenList() {
+    std::vector<std::pair<std::string, int>> lst;
+    for (int id = 0x100; id < token_count_; ++id) {
+        if (token_used_[id]) { lst.emplace_back(grammarSymbolText(id), id); }
+    }
+    return lst;
+}
+
+std::vector<std::string> LRBuilder::getActionList() {
+    std::vector<std::string> lst;
+    for (int act = 1; act < action_count_; ++act) { lst.emplace_back(grammarSymbolText(maskAction | act)); }
+    return lst;
+}
+
+std::vector<std::string> LRBuilder::getTokenText() {
+    std::vector<std::string> lst;
+    for (const auto& s : token_strings_) { lst.emplace_back(str2text(s)); }
+    return lst;
 }
 
 void LRBuilder::numberToStr(int num, std::string& str) {
@@ -797,261 +906,39 @@ bool LRBuilder::addState(const std::set<Item>& s, int& state_idx) {
     return true;
 }
 
-void LRBuilder::compressTables() {
-    // Compress action table :
-
-    int state, state_count = (int)action_tbl_.size();
-    compr_action_list_.clear();
-    compr_action_idx_.resize(state_count);
-    for (state = 0; state < state_count; state++) {
-        // Try to find equal state
-        int state2;
-        bool found = false;
-        for (state2 = 0; state2 < state; state2++) {
-            found = equal(action_tbl_[state].begin(), action_tbl_[state].end(), action_tbl_[state2].begin());
-            if (found) break;  // Found
-        }
-        if (!found) {
-            const std::vector<int>& line = action_tbl_[state];
-            compr_action_idx_[state] = (int)compr_action_list_.size();
-            int ch;
-
-            // Are there any reduce actions?
-            bool can_reduce = false;
-            int allowed_reduce_act = -1;
-            int err_count = 0;
-            for (ch = 0; ch < token_count_; ch++) {
-                int act = line[ch];
-                if (act == -1)
-                    err_count++;
-                else if (!can_reduce && (act & maskReduce)) {
-                    allowed_reduce_act = act;
-                    can_reduce = true;
-                }
-            }
-
-            // Find the most frequent action :
-
-            // Build histogram
-            std::map<int, int> histo;
-            for (ch = 0; ch < token_count_; ch++) {
-                int act = line[ch];
-                if (!can_reduce || (act != -1)) {
-                    int freq = 1;
-                    if (can_reduce && (act & maskReduce)) freq += err_count;
-                    std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(act, freq));
-                    if (!ins_res.second) ins_res.first->second++;
-                }
-            }
-            // Find maximum frequency
-            int max_freq = 0, most_freq_act = 0;
-            std::map<int, int>::const_iterator it = histo.begin();
-            while (it != histo.end()) {
-                if (it->second > max_freq) {
-                    max_freq = it->second;
-                    most_freq_act = it->first;
-                }
-                it++;
-            }
-
-            // Build list
-            for (ch = 0; ch < token_count_; ch++) {
-                int act = line[ch];
-                if (!can_reduce || (act != -1)) {
-                    if (act != most_freq_act) {
-                        compr_action_list_.push_back(ch);
-                        if (act == idNonassocError) act = -1;
-                        compr_action_list_.push_back(act);
-                    }
-                } else {
-                    if (!(most_freq_act & maskReduce)) {
-                        compr_action_list_.push_back(ch);
-                        compr_action_list_.push_back(allowed_reduce_act);
-                    }
-                }
-            }
-            // Add default action
-            compr_action_list_.push_back(idDefault);
-            compr_action_list_.push_back(most_freq_act);
-        } else
-            compr_action_idx_[state] = compr_action_idx_[state2];
-    }
-
-    // Compress goto table :
-
-    compr_goto_list_.clear();
-    compr_goto_idx_.resize(nonterm_count_);
-    for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
-        compr_goto_idx_[nonterm] = (int)compr_goto_list_.size();
-
-        // Find the most frequent state :
-
-        std::map<int, int> histo;
-        // Build histogram
-        for (state = 0; state < state_count; state++) {
-            int new_state = goto_tbl_[state][nonterm];
-            if (new_state != -1) {
-                std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(new_state, 1));
-                if (!ins_res.second) ins_res.first->second++;
-            }
-        }
-        // Find maximum frequency
-        int max_freq = 0, most_freq_state = 0;
-        std::map<int, int>::const_iterator it = histo.begin();
-        while (it != histo.end()) {
-            if (it->second > max_freq) {
-                max_freq = it->second;
-                most_freq_state = it->first;
-            }
-            it++;
-        }
-
-        // Build list
-        for (state = 0; state < state_count; state++) {
-            int state2 = goto_tbl_[state][nonterm];
-            if ((state2 != -1) && (state2 != most_freq_state)) {
-                compr_goto_list_.push_back(state);
-                compr_goto_list_.push_back(state2);
-            }
-        }
-        // Add default state
-        compr_goto_list_.push_back(-1);
-        compr_goto_list_.push_back(most_freq_state);
-    }
-}
-
-void LRBuilder::outputChar(std::ostream& outp, int ch) {
-    switch (ch) {
-        case '\n': outp << "\\n"; break;
-        case '\t': outp << "\\t"; break;
-        case '\v': outp << "\\v"; break;
-        case '\b': outp << "\\b"; break;
-        case '\r': outp << "\\r"; break;
-        case '\f': outp << "\\f"; break;
-        case '\a': outp << "\\a"; break;
-        case '\\': outp << "\\\\"; break;
-        case '\'': outp << "\\\'"; break;
-        case '\"': outp << "\\\""; break;
-        default:
-            if (((ch >= 1) && (ch <= 0x19)) || (ch == 0x7F))
-                outp << "\\x" << ((ch >> 4) & 0xF) << (ch & 0xF);
-            else if ((ch >= 1) && (ch <= 0x7E))
-                outp << (char)ch;
-    }
-}
-
-void LRBuilder::outputArray(std::ostream& outp, const std::string& class_name, const std::string& array_name,
-                            const std::vector<int>& data) {
-    if (data.size() > 0) {
-        outp << "int " << class_name << "::" << array_name << "[" << data.size() << "] = {";
-        for (std::vector<int>::size_type i = 0; i < data.size(); i++) {
-            if ((i & 15) == 0) outp << std::endl << "  ";
-            outp << data[i];
-            if (i != (data.size() - 1)) outp << ", ";
-        }
-        outp << std::endl << "};" << std::endl << std::endl;
-    } else
-        outp << "int " << class_name << "::" << array_name << "[1] = { -1 };" << std::endl << std::endl;
-}
-
-void LRBuilder::outputStringArray(std::ostream& outp, const std::string& class_name, const std::string& array_name,
-                                  const std::vector<std::string>& data) {
-    if (data.size() > 0) {
-        outp << "char* " << class_name << "::" << array_name << "[" << data.size() << "] = {";
-        for (std::vector<int>::size_type i = 0; i < data.size(); i++) {
-            const std::string& str = data[i];
-            outp << std::endl << "  \"";
-            for (std::string::size_type j = 0; j < str.size(); j++) outputChar(outp, str[j]);
-            outp << '\"';
-            if (i != (data.size() - 1)) outp << ", ";
-        }
-        outp << std::endl << "};" << std::endl << std::endl;
-    } else
-        outp << "char* " << class_name << "::" << array_name
-             << "[1] = { "
-                " };"
-             << std::endl
-             << std::endl;
-}
-
-void LRBuilder::outputDefinitions(const std::string& tkn_file_name, const std::string& act_file_name) {
-    std::ofstream out_tkn(tkn_file_name.c_str());
-    if (out_tkn) {
-        for (int id = 0x100; id < token_count_; id++) {
-            if (token_used_[id]) {
-                out_tkn << "static const int tkn_";
-                printGrammarSymbol(out_tkn, id);
-                out_tkn << " = " << id << ";" << std::endl;
-            }
-        }
-    } else
-        std::cout << "Warning: cannot open file \'" << tkn_file_name << "\'!" << std::endl;
-    std::ofstream out_act(act_file_name.c_str());
-    if (out_act) {
-        for (int act = 0; act < action_count_; act++) {
-            out_act << "static const int act_";
-            printGrammarSymbol(out_act, maskAction | act);
-            out_act << " = " << act << ";" << std::endl;
-        }
-    } else
-        std::cout << "Warning: cannot open file \'" << act_file_name << "\'!" << std::endl;
-}
-
-void LRBuilder::outputTables(const std::string& file_name) {
-    std::ofstream out_tbl(file_name.c_str());
-    if (out_tbl) {
-        std::vector<int> prod_info;
-        int prod_no, prod_count = (int)grammar_idx_.size() - 1;
-        for (prod_no = 0; prod_no < prod_count; prod_no++) {
-            int left = grammar_[grammar_idx_[prod_no]];
-            assert(left & maskNonterm);
-            prod_info.push_back(grammar_idx_[prod_no + 1] - grammar_idx_[prod_no] - 1);  // Length
-            prod_info.push_back(left);                                                   // Left part
-            prod_info.push_back(act_on_reduce_[prod_no]);                                // Action on reduce
-        }
-        outputArray(out_tbl, class_name_, "m_prod_info", prod_info);
-
-        outputArray(out_tbl, class_name_, "m_action_list", compr_action_list_);
-        outputArray(out_tbl, class_name_, "m_action_idx", compr_action_idx_);
-        outputArray(out_tbl, class_name_, "m_goto_list", compr_goto_list_);
-        outputArray(out_tbl, class_name_, "m_goto_idx", compr_goto_idx_);
-        outputStringArray(out_tbl, class_name_, "m_tkn_str", token_strings_);
-    } else
-        std::cout << "Warning: cannot open file \'" << file_name << "\'!" << std::endl;
-}
-
-void LRBuilder::printGrammarSymbol(std::ostream& outp, int id) {
-    if ((id >= 1) && (id <= 0xFF)) {
-        outp << '\'';
-        outputChar(outp, id);
-        outp << '\'';
-    } else if (id == idEmpty)
-        outp << "$empty";
-    else if (id == idDefault)
-        outp << "$default";
-    else {
+std::string LRBuilder::grammarSymbolText(int id) {
+    if (id > 0 && id < 0x100) {
+        return '\'' + str2text(std::string(1, static_cast<unsigned char>(id))) + '\'';
+    } else if (id == idEmpty) {
+        return "$empty";
+    } else if (id == idDefault) {
+        return "$default";
+    } else {
         std::string name;
         name_tbl_.getIdName(id, name);
-        outp << name;
+        return name;
     }
 }
 
-void LRBuilder::printActionName(std::ostream& outp, int id) {
+std::string LRBuilder::actionNameText(int id) {
     std::string name;
     name_tbl_.getIdName(id | maskAction, name);
-    outp << "{" << name << "}";
+    return '{' + name + '}';
 }
 
-void LRBuilder::printPrecedence(std::ostream& outp, int prec) {
+std::string LRBuilder::precedenceText(int prec) {
+    std::string text;
     if (prec != -1) {
-        outp << " %prec " << (prec & maskPrec);
-        if (prec & maskLeftAssoc)
-            outp << " %left";
-        else if (prec & maskRightAssoc)
-            outp << " %right";
-        else
-            outp << " %nonassoc";
+        text += " %prec " + std::to_string(prec & maskPrec);
+        if (prec & maskLeftAssoc) {
+            text += " %left";
+        } else if (prec & maskRightAssoc) {
+            text += " %right";
+        } else {
+            text += " %nonassoc";
+        }
     }
+    return text;
 }
 
 void LRBuilder::printProduction(std::ostream& outp, int prod_no, int pos /*= -1*/) {
@@ -1060,25 +947,14 @@ void LRBuilder::printProduction(std::ostream& outp, int prod_no, int pos /*= -1*
     std::vector<int> right;
     copy(grammar_.begin() + grammar_idx_[prod_no] + 1, grammar_.begin() + grammar_idx_[prod_no + 1],
          back_inserter(right));
-    outp << "    (" << prod_no << ") ";
-    printGrammarSymbol(outp, left);
-    outp << " -> ";
+    outp << "    (" << prod_no << ") " << grammarSymbolText(left) << " -> ";
     int i;
     if (pos != -1) {
-        for (i = 0; i < pos; i++) {
-            printGrammarSymbol(outp, right[i]);
-            outp << " ";
-        }
+        for (i = 0; i < pos; i++) { outp << grammarSymbolText(right[i]) << " "; }
         outp << ". ";
-        for (i = pos; i < (int)right.size(); i++) {
-            printGrammarSymbol(outp, right[i]);
-            outp << " ";
-        }
+        for (i = pos; i < (int)right.size(); i++) { outp << grammarSymbolText(right[i]) << " "; }
     } else {
-        for (i = 0; i < (int)right.size(); i++) {
-            printGrammarSymbol(outp, right[i]);
-            outp << " ";
-        }
+        for (i = 0; i < (int)right.size(); i++) { outp << grammarSymbolText(right[i]) << " "; }
     }
 }
 
@@ -1089,8 +965,7 @@ void LRBuilder::printItemSet(std::ostream& outp, const std::set<Item>& item) {
         outp << "[ ";
         int la_ch = it->la.getFirstValue();
         while (la_ch != -1) {
-            printGrammarSymbol(outp, la_ch);
-            outp << " ";
+            outp << grammarSymbolText(la_ch) << " ";
             la_ch = it->la.getNextValue(la_ch);
         }
         outp << "]" << std::endl;
@@ -1102,11 +977,7 @@ void LRBuilder::printTokens(std::ostream& outp) {
     outp << "---=== Tokens : ===---" << std::endl << std::endl;
     for (int id = 0; id < token_count_; id++) {
         if (token_used_[id]) {
-            outp << "    ";
-            printGrammarSymbol(outp, id);
-            outp << " " << id;
-            printPrecedence(outp, token_prec_[id]);
-            outp << std::endl;
+            outp << "    " << grammarSymbolText(id) << " " << id << precedenceText(token_prec_[id]) << std::endl;
         }
     }
     outp << std::endl;
@@ -1137,12 +1008,8 @@ void LRBuilder::printGrammar(std::ostream& outp) {
     int prod_no, prod_count = (int)grammar_idx_.size() - 1;
     for (prod_no = 0; prod_no < prod_count; prod_no++) {
         printProduction(outp, prod_no);
-        if (act_on_reduce_[prod_no] != -1) {
-            outp << " ";
-            printActionName(outp, act_on_reduce_[prod_no]);
-        }
-        printPrecedence(outp, prod_prec_[prod_no]);
-        outp << std::endl;
+        if (act_on_reduce_[prod_no] != -1) { outp << " " << actionNameText(act_on_reduce_[prod_no]); }
+        outp << precedenceText(prod_prec_[prod_no]) << std::endl;
     }
     outp << std::endl;
 }
@@ -1150,15 +1017,13 @@ void LRBuilder::printGrammar(std::ostream& outp) {
 void LRBuilder::printFirstTbl(std::ostream& outp) {
     outp << "---=== FIRST table : ===---" << std::endl << std::endl;
     for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
-        outp << "    FIRST(";
-        printGrammarSymbol(outp, maskNonterm | nonterm);
-        outp << ") = { ";
+        outp << "    FIRST(" << grammarSymbolText(maskNonterm | nonterm) << ") = { ";
         const ValueSet& first = first_tbl_[nonterm];
         int ch = first.getFirstValue();
         bool colon = false;
         while (ch != -1) {
-            if (colon) outp << ", ";
-            printGrammarSymbol(outp, ch);
+            if (colon) { outp << ", "; }
+            outp << grammarSymbolText(ch);
             colon = true;
             ch = first.getNextValue(ch);
         }
@@ -1170,15 +1035,13 @@ void LRBuilder::printFirstTbl(std::ostream& outp) {
 void LRBuilder::printAetaTbl(std::ostream& outp) {
     outp << "---=== Aeta table : ===---" << std::endl << std::endl;
     for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
-        outp << "    Aeta(";
-        printGrammarSymbol(outp, maskNonterm | nonterm);
-        outp << ") = { ";
+        outp << "    Aeta(" << grammarSymbolText(maskNonterm | nonterm) << ") = { ";
         const ValueSet& Aeta = Aeta_tbl_[nonterm];
         int ch = Aeta.getFirstValue();
         bool colon = false;
         while (ch != -1) {
-            if (colon) outp << ", ";
-            printGrammarSymbol(outp, maskNonterm | ch);
+            if (colon) { outp << ", "; }
+            outp << grammarSymbolText(maskNonterm | ch);
             colon = true;
             ch = Aeta.getNextValue(ch);
         }
@@ -1187,7 +1050,8 @@ void LRBuilder::printAetaTbl(std::ostream& outp) {
     outp << std::endl;
 }
 
-void LRBuilder::printStates(std::ostream& outp) {
+void LRBuilder::printStates(std::ostream& outp, std::vector<int>& action_idx, std::vector<int>& action_list,
+                            std::vector<int>& goto_idx, std::vector<int>& goto_list) {
     outp << "---=== LALR analyser states : ===---" << std::endl << std::endl;
     int state_idx, state_count = (int)states_.size();
     for (state_idx = 0; state_idx < state_count; state_idx++) {
@@ -1196,13 +1060,11 @@ void LRBuilder::printStates(std::ostream& outp) {
         outp << std::endl;
 
         // Action
-        int act_idx = compr_action_idx_[state_idx];
+        int act_idx = action_idx[state_idx];
         while (1) {
-            outp << "    ";
-            int token = compr_action_list_[act_idx++];
-            printGrammarSymbol(outp, token);
-            outp << ", ";
-            int act = compr_action_list_[act_idx++];
+            int token = action_list[act_idx++];
+            outp << "    " << grammarSymbolText(token) << ", ";
+            int act = action_list[act_idx++];
             if (act == -1)
                 outp << "error" << std::endl;
             else if (act == maskReduce)
@@ -1217,14 +1079,13 @@ void LRBuilder::printStates(std::ostream& outp) {
 
         // calcGoto
         for (int nonterm = 0; nonterm < nonterm_count_; nonterm++) {
-            int goto_idx = compr_goto_idx_[nonterm];
+            int idx = goto_idx[nonterm];
             while (1) {
-                int state_idx2 = compr_goto_list_[goto_idx++];
-                int new_state_idx = compr_goto_list_[goto_idx++];
+                int state_idx2 = goto_list[idx++];
+                int new_state_idx = goto_list[idx++];
                 if ((state_idx2 == -1) || (state_idx2 == state_idx)) {
-                    outp << "    ";
-                    printGrammarSymbol(outp, maskNonterm | nonterm);
-                    outp << ", goto state " << new_state_idx << std::endl;
+                    outp << "    " << grammarSymbolText(maskNonterm | nonterm) << ", goto state " << new_state_idx
+                         << std::endl;
                     break;
                 }
             }
@@ -1291,9 +1152,7 @@ int LRBuilder::errorUnusedProd(const std::string& name) {
 
 int LRBuilder::errorPrecRedef(int line_no, int id) {
     std::ostringstream err;
-    err << "****Error: precedence is already defined for token <";
-    printGrammarSymbol(err, id);
-    err << ">.";
+    err << "****Error: precedence is already defined for token <" << grammarSymbolText(id) << ">.";
     err_string_ = err.str();
     return 7;
 }
@@ -1307,18 +1166,14 @@ int LRBuilder::errorUndefToken(int line_no, const std::string& name) {
 
 int LRBuilder::errorUndefPrec(int line_no, int id) {
     std::ostringstream err;
-    err << "****Error: precedence is not defined for token <";
-    printGrammarSymbol(err, id);
-    err << ">.";
+    err << "****Error: precedence is not defined for token <" << grammarSymbolText(id) << ">.";
     err_string_ = err.str();
     return 9;
 }
 
 int LRBuilder::errorInvUseOfPredefToken(int line_no, int id) {
     std::ostringstream err;
-    err << "****Error: invalid use of predefined token <";
-    printGrammarSymbol(err, id);
-    err << ">.";
+    err << "****Error: invalid use of predefined token <" << grammarSymbolText(id) << ">.";
     err_string_ = err.str();
     return 10;
 }

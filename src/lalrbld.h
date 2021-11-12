@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <set>
+#include <unordered_map>
 #include <vector>
 
 const int idEnd = 0x000;
@@ -46,15 +47,25 @@ class LRBuilder {
     const std::string& getErrorString() const { return err_string_; };
     int loadGrammar(std::istream&);
     void buildAnalizer();
+    void compressTables(std::vector<int>& action_idx, std::vector<int>& action_list, std::vector<int>& goto_idx,
+                        std::vector<int>& goto_list);
+    std::vector<int> getProdInfo();
+    std::vector<std::pair<std::string, int>> getUsedTokenList();
+    std::vector<std::string> getActionList();
+    std::vector<std::string> getTokenText();
+    void printTokens(std::ostream& outp);
+    void printNonterms(std::ostream& outp);
+    void printActions(std::ostream& outp);
+    void printGrammar(std::ostream& outp);
+    void printFirstTbl(std::ostream& outp);
+    void printAetaTbl(std::ostream& outp);
+    void printStates(std::ostream& outp, std::vector<int>& action_idx, std::vector<int>& action_list,
+                     std::vector<int>& goto_idx, std::vector<int>& goto_list);
 
  protected:
+    std::unordered_map<std::string, std::string> options_;
+
     std::string err_string_;
-    bool output_report_ = false;
-    std::string class_name_;
-    std::string tkn_file_name_;
-    std::string act_file_name_;
-    std::string tbl_file_name_;
-    std::string report_file_name_;
     int token_count_ = 0;
     int nonterm_count_ = 0;
     int action_count_ = 0;
@@ -74,10 +85,6 @@ class LRBuilder {
     std::vector<std::set<Item>> states_;
     std::vector<std::vector<int>> action_tbl_;
     std::vector<std::vector<int>> goto_tbl_;
-    std::vector<int> compr_action_list_;
-    std::vector<int> compr_action_idx_;
-    std::vector<int> compr_goto_list_;
-    std::vector<int> compr_goto_idx_;
 
     void numberToStr(int num, std::string& str);
     void calcFirst(const std::vector<int>& seq, ValueSet& first);
@@ -87,25 +94,13 @@ class LRBuilder {
     void calcClosure(const Item& src, std::set<Item>& closure);
     void calcClosureSet(const std::set<Item>& src, std::set<Item>& closure);
     bool addState(const std::set<Item>&, int&);
-    void compressTables();
-    void outputChar(std::ostream&, int);
-    void outputArray(std::ostream&, const std::string&, const std::string&, const std::vector<int>&);
-    void outputStringArray(std::ostream&, const std::string&, const std::string&, const std::vector<std::string>&);
-    void outputDefinitions(const std::string&, const std::string&);
-    void outputTables(const std::string&);
 
-    void printGrammarSymbol(std::ostream&, int);
-    void printActionName(std::ostream&, int);
-    void printPrecedence(std::ostream&, int);
+    [[nodiscard]] std::string grammarSymbolText(int id);
+    [[nodiscard]] std::string actionNameText(int id);
+    [[nodiscard]] std::string precedenceText(int prec);
+
     void printProduction(std::ostream&, int, int pos = -1);
     void printItemSet(std::ostream&, const std::set<Item>&);
-    void printTokens(std::ostream&);
-    void printNonterms(std::ostream&);
-    void printActions(std::ostream&);
-    void printGrammar(std::ostream&);
-    void printFirstTbl(std::ostream&);
-    void printAetaTbl(std::ostream&);
-    void printStates(std::ostream&);
 
     int errorSyntax(int);
     int errorNameRedef(int, const std::string&);
