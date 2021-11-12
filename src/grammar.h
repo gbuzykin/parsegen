@@ -51,6 +51,7 @@ class Grammar {
     const TokenInfo& getTokenInfo(unsigned id) const { return tokens_[id]; }
     unsigned getNontermCount() const { return nonterm_count_; }
     unsigned getProductionCount() const { return static_cast<unsigned>(productions_.size()); }
+    const std::vector<ProductionInfo>& getProductions() const { return productions_; }
     const ProductionInfo& getProductionInfo(unsigned n_prod) const { return productions_[n_prod]; }
     std::optional<unsigned> findName(std::string_view name) const { return name_tbl_.findName(name); }
     std::string_view getName(unsigned id) const;

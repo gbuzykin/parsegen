@@ -228,8 +228,8 @@ int main(int argc, char** argv) {
                 grammar.printNonterms(ofile);
                 grammar.printActions(ofile);
                 grammar.printGrammar(ofile);
-                lr_builder.printFirstTbl(ofile);
-                lr_builder.printAetaTbl(ofile);
+                lr_builder.printFirstTable(ofile);
+                lr_builder.printAetaTable(ofile);
                 lr_builder.printStates(ofile, action_idx, action_list, goto_idx, goto_list);
             } else {
                 std::cerr << "parsegen: cannot open output file `" << report_file_name << "`." << std::endl;

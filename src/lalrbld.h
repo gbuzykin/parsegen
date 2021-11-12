@@ -19,10 +19,10 @@ class LRBuilder {
                         std::vector<int>& goto_list);
     unsigned getSRConflictCount() const { return sr_conflict_count_; }
     unsigned getRRConflictCount() const { return rr_conflict_count_; }
-    void printFirstTbl(std::ostream& outp);
-    void printAetaTbl(std::ostream& outp);
-    void printStates(std::ostream& outp, std::vector<int>& action_idx, std::vector<int>& action,
-                     std::vector<int>& goto_idx, std::vector<int>& goto_list);
+    void printFirstTable(std::ostream& outp);
+    void printAetaTable(std::ostream& outp);
+    void printStates(std::ostream& outp, const std::vector<int>& action_idx, const std::vector<int>& action,
+                     const std::vector<int>& goto_idx, const std::vector<int>& goto_list);
 
  protected:
     struct Position {
@@ -35,12 +35,15 @@ class LRBuilder {
         };
     };
 
-    struct StateItem {
+    struct LookAheadSet {
+        LookAheadSet() = default;
+        explicit LookAheadSet(unsigned id) { la.addValue(id); }
+        explicit LookAheadSet(const ValueSet& in_la) : la(in_la) {}
         ValueSet la;
-        std::vector<const StateItem*> accept_la_from;
+        std::vector<const LookAheadSet*> accept_la_from;
     };
 
-    using State = std::map<Position, StateItem>;
+    using PositionSet = std::map<Position, LookAheadSet>;
 
     const Grammar& grammar_;
 
@@ -50,16 +53,14 @@ class LRBuilder {
     std::vector<ValueSet> first_tbl_;
     std::vector<ValueSet> Aeta_tbl_;
 
-    std::vector<State> states_;
+    std::vector<PositionSet> states_;
     std::vector<std::vector<int>> action_tbl_;
     std::vector<std::vector<int>> goto_tbl_;
 
     ValueSet calcFirst(const std::vector<unsigned>& seq, unsigned pos = 0);
-    State calcGoto(const State& s, unsigned symb);
-    State calcClosure(const State& s);
-    std::pair<unsigned, bool> addState(const State& s);
-    void buildFirstTbl();
-    void buildAetaTbl();
-
-    void printItemSet(std::ostream& outp, const State& s);
+    PositionSet calcGoto(const PositionSet& s, unsigned symb);
+    PositionSet calcClosure(const PositionSet& s);
+    std::pair<unsigned, bool> addState(const PositionSet& s);
+    void buildFirstTable();
+    void buildAetaTable();
 };
