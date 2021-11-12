@@ -45,10 +45,8 @@ int LRBuilder::loadGrammar(std::istream& inp) {
         token_used_[i] = false;
         token_prec_[i] = -1;
     }
-    int id = idEnd;
-    name_tbl_.insertName("$end", id);
-    id = idError;
-    name_tbl_.insertName("error", id);
+    name_tbl_.insertName("$end", idEnd);
+    name_tbl_.insertName("error", idError);
     token_used_[idEnd] = true;
     token_used_[idError] = true;
 
@@ -71,8 +69,9 @@ int LRBuilder::loadGrammar(std::istream& inp) {
                 if (tt != tt_id) return errorSyntax(lexer.getLineNo());
                 std::string token_name = lexer.getLVal().str;
                 // Add token to the name table
-                if (!name_tbl_.insertName(token_name, token_count_))
+                if (!name_tbl_.insertName(token_name, token_count_).second) {
                     return errorNameRedef(lexer.getLineNo(), token_name);
+                }
                 // Get token string
                 tt = lexer.lex();
                 std::string token_string;
@@ -94,8 +93,9 @@ int LRBuilder::loadGrammar(std::istream& inp) {
                 std::string action_name = lexer.getLVal().str;
                 tt = -1;
                 // Add action to the name table
-                int id = maskAction | action_count_;
-                if (!name_tbl_.insertName(action_name, id)) return errorNameRedef(lexer.getLineNo(), action_name);
+                if (!name_tbl_.insertName(action_name, maskAction | action_count_).second) {
+                    return errorNameRedef(lexer.getLineNo(), action_name);
+                }
                 action_count_++;
                 if (action_count_ > ValueSet::kMaxValue) throw std::runtime_error("too many actions");
             } break;
@@ -119,21 +119,24 @@ int LRBuilder::loadGrammar(std::istream& inp) {
                     // Get token
                     tt = lexer.lex();
                     if (tt == tt_id) {
-                        id = token_count_;
                         std::string token_name = lexer.getLVal().str;
-                        if (name_tbl_.insertName(token_name, id)) {
+                        bool success = true;
+                        std::tie(id, success) = name_tbl_.insertName(token_name, token_count_);
+                        if (success) {
                             token_strings_.push_back("");
                             token_used_.push_back(true);
                             token_prec_.push_back(-1);
                             token_count_++;
-                            if (token_count_ > ValueSet::kMaxValue) throw std::runtime_error("too many tokens");
-                        } else if (id == idError)
+                            if (token_count_ > ValueSet::kMaxValue) { throw std::runtime_error("too many tokens"); }
+                        } else if (id == idError) {
                             return errorInvUseOfPredefToken(lexer.getLineNo(), id);
+                        }
                     } else if (tt == tt_symb) {
                         id = lexer.getLVal().i;
                         token_used_[id] = true;
-                    } else
+                    } else {
                         break;
+                    }
 
                     if (token_prec_[id] != -1) return errorPrecRedef(lexer.getLineNo(), id);
                     if (assoc == tt_left)
@@ -166,8 +169,7 @@ int LRBuilder::loadGrammar(std::istream& inp) {
     grammar_idx_.push_back((int)grammar_.size());
     act_on_reduce_.push_back(-1);
     prod_prec_.push_back(-1);
-    id = maskNonterm;
-    name_tbl_.insertName("$accept", id);
+    name_tbl_.insertName("$accept", maskNonterm);
 
     while (1) {
         // Read left part of the production
@@ -178,14 +180,12 @@ int LRBuilder::loadGrammar(std::istream& inp) {
             return errorSyntax(lexer.getLineNo());
         std::string left_part_name = lexer.getLVal().str;
         // Try to find name in the name table
-        int left_part_id = maskNonterm | nonterm_count_;
-        bool ins_res = name_tbl_.insertName(left_part_name, left_part_id);
-        if (!ins_res)  // Already present
-        {
-            // Check for nonterminal
-            if (!(left_part_id & maskNonterm)) return errorLeftPartIsNotNonterm(lexer.getLineNo());
-        } else  // New name added
+        auto [left_part_id, success] = name_tbl_.insertName(left_part_name, maskNonterm | nonterm_count_);
+        if (success) {
             nonterm_count_++;
+        } else if (!(left_part_id & maskNonterm)) {  // Check for nonterminal
+            return errorLeftPartIsNotNonterm(lexer.getLineNo());
+        }
         nonterm_defined.addValue(left_part_id & maskId);  // Add to the set of defined nonterminals
 
         // Eat up ':'
@@ -206,12 +206,17 @@ int LRBuilder::loadGrammar(std::istream& inp) {
                     tt = lexer.lex();
                     if (tt == tt_id) {
                         std::string token_name = lexer.getLVal().str;
-                        if (!name_tbl_.findName(token_name, id)) return errorUndefToken(lexer.getLineNo(), token_name);
-                        if (id & maskNonterm) return errorUndefToken(lexer.getLineNo(), token_name);
-                    } else if (tt == tt_symb)
+                        if (auto found_id = name_tbl_.findName(token_name); found_id) {
+                            id = *found_id;
+                            if (id & maskNonterm) { return errorUndefToken(lexer.getLineNo(), token_name); }
+                        } else {
+                            return errorUndefToken(lexer.getLineNo(), token_name);
+                        }
+                    } else if (tt == tt_symb) {
                         id = lexer.getLVal().i;
-                    else
+                    } else {
                         return errorSyntax(lexer.getLineNo());
+                    }
 
                     if (!token_used_[id] || (token_prec_[id] == -1)) return errorUndefPrec(lexer.getLineNo(), id);
                     prec = token_prec_[id];
@@ -225,27 +230,32 @@ int LRBuilder::loadGrammar(std::istream& inp) {
                 case tt_act:  // Action
                 {
                     // Add action on reduce
-                    int act_id = -1;
                     std::string act_name = lexer.getLVal().str;
-                    if (!name_tbl_.findName(act_name, act_id)) return errorUndefAction(lexer.getLineNo(), act_name);
-                    int id = maskNonterm | nonterm_count_;
-                    grammar_.push_back(id);
-                    act_nonterms.push_back(id);
-                    act_ids.push_back(act_id & maskId);
+                    if (auto found_id = name_tbl_.findName(act_name); found_id) {
+                        int id = maskNonterm | nonterm_count_;
+                        grammar_.push_back(id);
+                        act_nonterms.push_back(id);
+                        act_ids.push_back(*found_id & maskId);
+                    } else {
+                        return errorUndefAction(lexer.getLineNo(), act_name);
+                    }
                     nonterm_count_++;
                     if (nonterm_count_ > ValueSet::kMaxValue) throw std::runtime_error("too many nonterminals");
                 } break;
                 case tt_id:  // Identifier
                 {
-                    int id = maskNonterm | nonterm_count_;
                     std::string name = lexer.getLVal().str;
-                    if (name_tbl_.insertName(name, id)) {
+                    auto [id, success] = name_tbl_.insertName(name, maskNonterm | nonterm_count_);
+                    if (success) {
                         nonterm_count_++;
-                        if (nonterm_count_ > ValueSet::kMaxValue) throw std::runtime_error("too many nonterminals");
+                        if (nonterm_count_ > ValueSet::kMaxValue) { throw std::runtime_error("too many nonterminals"); }
+                    } else if (id & maskAction) {
+                        return errorInvUseOfActName(lexer.getLineNo(), name);
                     }
-                    if (id & maskAction) return errorInvUseOfActName(lexer.getLineNo(), name);
                     grammar_.push_back(id);
-                    if (id & maskNonterm) nonterm_used.addValue(id & maskId);  // Add to the set of used nonterminals
+                    if (id & maskNonterm) {  // Add to the set of used nonterminals
+                        nonterm_used.addValue(id & maskId);
+                    }
                 } break;
                 case '|':
                 case ';': {
@@ -305,13 +315,9 @@ int LRBuilder::loadGrammar(std::istream& inp) {
     ValueSet undef = nonterm_used - nonterm_defined;
     ValueSet unused = nonterm_defined - nonterm_used;
     if (!undef.empty()) {
-        std::string name;
-        name_tbl_.getIdName(maskNonterm | undef.getFirstValue(), name);
-        return errorUndefNonterm(name);
+        return errorUndefNonterm(std::string(name_tbl_.getName(maskNonterm | undef.getFirstValue())));
     } else if (!unused.empty()) {
-        std::string name;
-        name_tbl_.getIdName(maskNonterm | unused.getFirstValue(), name);
-        return errorUnusedProd(name);
+        return errorUnusedProd(std::string(name_tbl_.getName(maskNonterm | unused.getFirstValue())));
     }
     return 0;
 }
@@ -910,18 +916,11 @@ std::string LRBuilder::grammarSymbolText(int id) {
         return "$empty";
     } else if (id == idDefault) {
         return "$default";
-    } else {
-        std::string name;
-        name_tbl_.getIdName(id, name);
-        return name;
     }
+    return std::string(name_tbl_.getName(id));
 }
 
-std::string LRBuilder::actionNameText(int id) {
-    std::string name;
-    name_tbl_.getIdName(id | maskAction, name);
-    return '{' + name + '}';
-}
+std::string LRBuilder::actionNameText(int id) { return '{' + std::string(name_tbl_.getName(id | maskAction)) + '}'; }
 
 std::string LRBuilder::precedenceText(int prec) {
     std::string text;
@@ -979,9 +978,7 @@ void LRBuilder::printTokens(std::ostream& outp) {
 void LRBuilder::printNonterms(std::ostream& outp) {
     outp << "---=== Nonterminals : ===---" << std::endl << std::endl;
     for (int id = maskNonterm; id < (maskNonterm + nonterm_count_); id++) {
-        std::string name;
-        name_tbl_.getIdName(id, name);
-        outp << "    " << name << " " << id << std::endl;
+        outp << "    " << name_tbl_.getName(id) << " " << id << std::endl;
     }
     outp << std::endl;
 }
@@ -989,9 +986,7 @@ void LRBuilder::printNonterms(std::ostream& outp) {
 void LRBuilder::printActions(std::ostream& outp) {
     outp << "---=== Actions : ===---" << std::endl << std::endl;
     for (int id = maskAction; id < (maskAction + action_count_); id++) {
-        std::string name;
-        name_tbl_.getIdName(id, name);
-        outp << "    " << name << " " << id << std::endl;
+        outp << "    " << name_tbl_.getName(id) << " " << id << std::endl;
     }
     outp << std::endl;
 }

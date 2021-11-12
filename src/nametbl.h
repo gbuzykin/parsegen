@@ -1,22 +1,22 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 
 class NameTable {
  public:
     NameTable() = default;
     ~NameTable() = default;
-    NameTable(const NameTable&);
+    NameTable(const NameTable&) = delete;
+    NameTable& operator=(const NameTable&) = delete;
 
     void clear();
-    bool insertName(const std::string&, int&);
-    bool findName(const std::string&, int&) const;
-    bool getIdName(int, std::string&) const;
-
-    NameTable& operator=(const NameTable&);
+    std::pair<unsigned, bool> insertName(std::string name, unsigned id);
+    std::optional<unsigned> findName(std::string_view name) const;
+    std::string_view getName(unsigned id) const;
 
  private:
-    std::map<std::string, int> name_to_id_;
-    std::map<int, const std::string*> id_to_name_;
+    std::map<std::string, unsigned, std::less<>> name_to_id_;
+    std::map<unsigned, std::string_view> id_to_name_;
 };
