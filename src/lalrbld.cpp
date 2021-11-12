@@ -528,7 +528,7 @@ void LRBuilder::printItemSet(std::ostream& outp, const State& item) {
     while (it != item.end()) {
         grammar_.printProduction(outp, it->first.prod_no, it->first.pos);
         outp << " [";
-        for (unsigned la_ch : it->second.la) { outp << ' ' << grammar_.grammarSymbolText(la_ch); }
+        for (unsigned la_ch : it->second.la) { outp << ' ' << grammar_.symbolText(la_ch); }
         outp << " ]" << std::endl;
         it++;
     }
@@ -537,12 +537,12 @@ void LRBuilder::printItemSet(std::ostream& outp, const State& item) {
 void LRBuilder::printFirstTbl(std::ostream& outp) {
     outp << "---=== FIRST table : ===---" << std::endl << std::endl;
     for (int nonterm = 0; nonterm < grammar_.nonterm_count; nonterm++) {
-        outp << "    FIRST(" << grammar_.grammarSymbolText(maskNonterm | nonterm) << ") = { ";
+        outp << "    FIRST(" << grammar_.name_tbl.getName(maskNonterm | nonterm) << ") = { ";
         const ValueSet& first = first_tbl_[nonterm];
         bool colon = false;
         for (unsigned ch : first) {
             if (colon) { outp << ", "; }
-            outp << grammar_.grammarSymbolText(ch);
+            outp << grammar_.name_tbl.getName(ch);
             colon = true;
         }
         outp << " }" << std::endl;
@@ -553,12 +553,12 @@ void LRBuilder::printFirstTbl(std::ostream& outp) {
 void LRBuilder::printAetaTbl(std::ostream& outp) {
     outp << "---=== Aeta table : ===---" << std::endl << std::endl;
     for (int nonterm = 0; nonterm < grammar_.nonterm_count; nonterm++) {
-        outp << "    Aeta(" << grammar_.grammarSymbolText(maskNonterm | nonterm) << ") = { ";
+        outp << "    Aeta(" << grammar_.name_tbl.getName(maskNonterm | nonterm) << ") = { ";
         const ValueSet& Aeta = Aeta_tbl_[nonterm];
         bool colon = false;
         for (unsigned ch : Aeta) {
             if (colon) { outp << ", "; }
-            outp << grammar_.grammarSymbolText(maskNonterm | ch);
+            outp << grammar_.name_tbl.getName(maskNonterm | ch);
             colon = true;
         }
         outp << " }" << std::endl;
@@ -579,7 +579,7 @@ void LRBuilder::printStates(std::ostream& outp, std::vector<int>& action_idx, st
         int act_idx = action_idx[state_idx];
         while (1) {
             int token = action_list[act_idx++];
-            outp << "    " << grammar_.grammarSymbolText(token >= 0 ? token : idDefault) << ", ";
+            outp << "    " << grammar_.symbolText(token >= 0 ? token : idDefault) << ", ";
             int act = action_list[act_idx++];
             if (act == -1)
                 outp << "error" << std::endl;
@@ -600,7 +600,7 @@ void LRBuilder::printStates(std::ostream& outp, std::vector<int>& action_idx, st
                 int state_idx2 = goto_list[idx++];
                 int new_state_idx = goto_list[idx++];
                 if ((state_idx2 == -1) || (state_idx2 == state_idx)) {
-                    outp << "    " << grammar_.grammarSymbolText(maskNonterm | nonterm) << ", goto state "
+                    outp << "    " << grammar_.name_tbl.getName(maskNonterm | nonterm) << ", goto state "
                          << new_state_idx << std::endl;
                     break;
                 }

@@ -28,14 +28,13 @@ struct Grammar {
     std::vector<int> token_prec;
     std::vector<int> prod_prec;
     NameTable name_tbl;
-    [[nodiscard]] std::string grammarSymbolText(int id) const;
-    [[nodiscard]] std::string actionNameText(int id) const;
-    [[nodiscard]] std::string precedenceText(int prec) const;
-    std::vector<std::pair<std::string, int>> getTokenList();
-    std::vector<std::pair<std::string, int>> getActionList();
+    std::vector<std::pair<std::string_view, int>> getTokenList();
+    std::vector<std::pair<std::string_view, int>> getActionList();
     void printProduction(std::ostream& outp, int prod_no, int pos = -1) const;
     void printTokens(std::ostream& outp) const;
     void printNonterms(std::ostream& outp) const;
     void printActions(std::ostream& outp) const;
     void printGrammar(std::ostream& outp) const;
+    [[nodiscard]] std::string symbolText(unsigned id) const;
+    [[nodiscard]] std::string decoratedSymbolText(unsigned id) const;
 };

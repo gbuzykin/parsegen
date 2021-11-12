@@ -138,15 +138,13 @@ int Parser::parse() {
     grammar_.act_on_reduce.clear();
     grammar_.prod_prec.clear();
     // Load grammar
-    int act_nonterm_count = 0;
     grammar_.nonterm_count = 1;
     ValueSet nonterm_used, nonterm_defined;
     // Add augmenting production
-    grammar_.grammar_idx.push_back((int)grammar_.grammar.size());
+    grammar_.grammar_idx.push_back(0);
     grammar_.grammar.push_back(maskNonterm);
     grammar_.grammar.push_back(maskNonterm | 1);
     grammar_.grammar.push_back(idEnd);
-    grammar_.grammar_idx.push_back((int)grammar_.grammar.size());
     grammar_.act_on_reduce.push_back(0);
     grammar_.prod_prec.push_back(-1);
     grammar_.name_tbl.insertName("$accept", maskNonterm);
@@ -174,8 +172,7 @@ int Parser::parse() {
 
         // Read production
         bool stop = false;
-        std::vector<int> act_nonterms, act_ids;
-        grammar_.grammar.push_back(left_part_id);
+        std::vector<int> prod;
         int prec = -1;
         do {
             tt = lex();
@@ -207,23 +204,17 @@ int Parser::parse() {
                 case tt_symb:  // Single symbol
                 {
                     int id = std::get<unsigned>(tkn_.val);
-                    grammar_.grammar.push_back(id);
+                    prod.push_back(id);
                     grammar_.token_used[id] = true;
                 } break;
-                case tt_action_id:  // Action
-                {
+                case tt_action_id: {  // Action
                     // Add action on reduce
                     std::string act_name = std::get<std::string>(tkn_.val);
                     if (auto found_id = grammar_.name_tbl.findName(act_name); found_id && (*found_id & maskAction)) {
-                        int id = maskNonterm | grammar_.nonterm_count;
-                        grammar_.grammar.push_back(id);
-                        act_nonterms.push_back(id);
-                        act_ids.push_back(*found_id & maskId);
+                        prod.push_back(*found_id);
                     } else {
                         return logError() << "undefined action.";
                     }
-                    grammar_.nonterm_count++;
-                    if (grammar_.nonterm_count > ValueSet::kMaxValue) throw std::runtime_error("too many nonterminals");
                 } break;
                 case tt_token_id:
                 case tt_error_id: {  // Token
@@ -231,7 +222,7 @@ int Parser::parse() {
                     std::string token_name = std::get<std::string>(tkn_.val);
                     if (auto found_id = grammar_.name_tbl.findName(token_name);
                         found_id && !(*found_id & (maskNonterm | maskAction))) {
-                        grammar_.grammar.push_back(*found_id);
+                        prod.push_back(*found_id);
                     } else {
                         return logError() << "undefined token.";
                     }
@@ -247,52 +238,57 @@ int Parser::parse() {
                     } else if (!(left_part_id & maskNonterm)) {
                         return logError() << "name is already used for tokens or actions.";
                     }
-                    grammar_.grammar.push_back(id);
+                    prod.push_back(id);
                     nonterm_used.addValue(id & maskId);
                 } break;
                 case '|':
                 case ';': {
-                    int i;
-                    // Save production action
-                    if ((act_nonterms.size() > 0) &&
-                        (grammar_.grammar[grammar_.grammar.size() - 1] == act_nonterms[act_nonterms.size() - 1])) {
-                        // Action is at the end of production
-                        grammar_.act_on_reduce.push_back(act_ids[act_ids.size() - 1]);
-                        grammar_.grammar.pop_back();
-                        act_nonterms.pop_back();
-                        act_ids.pop_back();
-                        grammar_.nonterm_count--;
-                    } else
-                        grammar_.act_on_reduce.push_back(0);
                     // Calculate default precedence
                     if (prec == -1) {
-                        for (i = (int)(grammar_.grammar.size() - 1);
-                             i > (int)grammar_.grammar_idx[grammar_.grammar_idx.size() - 1]; i--) {
-                            int id = grammar_.grammar[i];
-                            if (!(id & maskNonterm))  // Is token
-                            {
-                                assert(grammar_.token_used[id]);
-                                prec = grammar_.token_prec[id];
+                        for (auto it = prod.rbegin(); it != prod.rend(); ++it) {
+                            if (!(*it & (maskAction | maskNonterm))) {  // Is token
+                                assert(grammar_.token_used[*it]);
+                                prec = grammar_.token_prec[*it];
                                 break;
                             }
                         }
                     }
-                    grammar_.prod_prec.push_back(prec);
-                    // Add productions for not end actions
-                    for (i = 0; i < (int)act_nonterms.size(); i++) {
-                        std::string name = std::to_string(++act_nonterm_count);
-                        grammar_.name_tbl.insertName("@" + name, act_nonterms[i]);
-                        grammar_.grammar_idx.push_back((int)grammar_.grammar.size());
-                        grammar_.grammar.push_back(act_nonterms[i]);
-                        grammar_.act_on_reduce.push_back(act_ids[i]);
-                        grammar_.prod_prec.push_back(-1);
+
+                    if (!prod.empty()) {
+                        // Add productions for not end actions
+                        for (auto it = prod.begin(); it != prod.end() - 1; ++it) {
+                            if (*it & maskAction) {
+                                std::string name = '@' + std::to_string(grammar_.nonterm_count);
+                                int nonterm = maskNonterm | grammar_.nonterm_count++;
+                                if (grammar_.nonterm_count > ValueSet::kMaxValue) {
+                                    throw std::runtime_error("too many nonterminals");
+                                }
+                                grammar_.name_tbl.insertName(std::move(name), nonterm);
+                                grammar_.grammar_idx.push_back((int)grammar_.grammar.size());
+                                grammar_.grammar.push_back(nonterm);
+                                grammar_.act_on_reduce.push_back(*it & maskId);
+                                grammar_.prod_prec.push_back(-1);
+                                *it = nonterm;
+                            }
+                        }
                     }
-                    act_nonterms.clear();
-                    act_ids.clear();
+
+                    // Save production action
+                    if (!prod.empty() && (prod.back() & maskAction)) {
+                        // Action is at the end of production
+                        grammar_.act_on_reduce.push_back(prod.back() & maskId);
+                        prod.pop_back();
+                    } else {
+                        grammar_.act_on_reduce.push_back(0);
+                    }
+                    grammar_.prod_prec.push_back(prec);
                     grammar_.grammar_idx.push_back((int)grammar_.grammar.size());
+                    grammar_.grammar.push_back(left_part_id);
+                    grammar_.grammar.insert(grammar_.grammar.end(), prod.begin(), prod.end());
+
                     if (tt == '|') {
+                        prod.clear();
                         prec = -1;
-                        grammar_.grammar.push_back(left_part_id);  // Add next production
                     } else
                         stop = true;
                 } break;
@@ -300,6 +296,8 @@ int Parser::parse() {
             }
         } while (!stop);
     }
+
+    grammar_.grammar_idx.push_back((int)grammar_.grammar.size());
 
     // Add start nonterminal to the set of used nonterminals
     if (grammar_.grammar.size() > 2) nonterm_used.addValue(1);
