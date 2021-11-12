@@ -25,25 +25,22 @@ class LRBuilder {
                      std::vector<int>& goto_idx, std::vector<int>& goto_list);
 
  protected:
-    struct StateItemPos {
-        StateItemPos(int in_prod_no, int in_pos) : prod_no(in_prod_no), pos(in_pos) {}
-        int prod_no, pos;
-        friend bool operator==(const StateItemPos& p1, const StateItemPos& p2) {
-            return p1.prod_no == p2.prod_no && p1.pos == p2.pos;
+    struct Position {
+        unsigned n_prod, pos;
+        friend bool operator==(const Position& p1, const Position& p2) {
+            return p1.n_prod == p2.n_prod && p1.pos == p2.pos;
         };
-        friend bool operator<(const StateItemPos& p1, const StateItemPos& p2) {
-            return p1.prod_no < p2.prod_no || (p1.prod_no == p2.prod_no && p1.pos < p2.pos);
+        friend bool operator<(const Position& p1, const Position& p2) {
+            return p1.n_prod < p2.n_prod || (p1.n_prod == p2.n_prod && p1.pos < p2.pos);
         };
     };
 
     struct StateItem {
-        StateItem() = default;
-        explicit StateItem(const ValueSet& in_la) : la(in_la) {}
         ValueSet la;
         std::vector<const StateItem*> accept_la;
     };
 
-    using State = std::map<StateItemPos, StateItem>;
+    using State = std::map<Position, StateItem>;
 
     const Grammar& grammar_;
 
@@ -57,13 +54,12 @@ class LRBuilder {
     std::vector<std::vector<int>> action_tbl_;
     std::vector<std::vector<int>> goto_tbl_;
 
-    void calcFirst(const std::vector<int>& seq, ValueSet& first);
-    void genFirstTbl();
-    void genAetaTbl();
-    void calcGoto(const State&, int, State&);
-    void calcClosure(const StateItemPos& pos, State& closure);
-    void calcClosureSet(const State& src, State& closure);
-    bool addState(const State&, int&);
+    ValueSet calcFirst(const std::vector<unsigned>& seq, unsigned pos = 0);
+    State calcGoto(const State& s, unsigned symb);
+    State calcClosure(const State& s);
+    std::pair<unsigned, bool> addState(const State& s);
+    void buildFirstTbl();
+    void buildAetaTbl();
 
-    void printItemSet(std::ostream&, const State&);
+    void printItemSet(std::ostream& outp, const State& s);
 };

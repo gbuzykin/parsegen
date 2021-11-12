@@ -1,48 +1,42 @@
 #include "lalrbld.h"
 
 #include <cassert>
-#include <tuple>
 
 void LRBuilder::buildAnalizer() {
-    genFirstTbl();
-    genAetaTbl();
-
-    std::vector<int> unmarked_states;
+    buildFirstTbl();
+    buildAetaTbl();
 
     // Build LR(0) item groups;
 
-    // Add initial unmarked state
-    int state_idx;
-    State new_state;
-    new_state.emplace(std::piecewise_construct, std::make_tuple(0, 0), std::tuple<>());
-    addState(new_state, state_idx);
-    unmarked_states.push_back(0);
+    std::vector<unsigned> pending_states;
+
+    // Add initial state
+    pending_states.push_back(addState(State{{Position{0, 0}, StateItem{}}}).first);
 
     do {
-        int unm_state = unmarked_states.back();
-        unmarked_states.pop_back();
-        int ch;
-        // calcGoto for nonterminals
-        for (ch = 0; ch < grammar_.getNontermCount(); ch++) {
-            calcGoto(states_[unm_state], kNontermFlag | ch, new_state);
-            if (new_state.size() > 0)  // Nonempty state
-            {
-                if (addState(new_state, state_idx)) unmarked_states.push_back(state_idx);
-                goto_tbl_[unm_state][ch] = state_idx;
+        unsigned state_idx = pending_states.back();
+        pending_states.pop_back();
+        // Goto for nonterminals
+        for (unsigned ch = 0; ch < grammar_.getNontermCount(); ch++) {
+            State new_state = calcGoto(states_[state_idx], kNontermFlag | ch);
+            if (!new_state.empty()) {
+                auto [new_state_idx, success] = addState(new_state);
+                if (success) { pending_states.push_back(new_state_idx); }
+                goto_tbl_[state_idx][ch] = new_state_idx;
             }
         }
         // Goto for tokens
-        for (ch = 0; ch < grammar_.getTokenCount(); ch++) {
+        for (unsigned ch = 0; ch < grammar_.getTokenCount(); ch++) {
             if (grammar_.getTokenInfo(ch).is_used) {
-                calcGoto(states_[unm_state], ch, new_state);
-                if (new_state.size() > 0)  // Nonempty state
-                {
-                    if (addState(new_state, state_idx)) unmarked_states.push_back(state_idx);
-                    action_tbl_[unm_state][ch] = (state_idx << kActionTblFlagCount) + kShiftBit;
+                State new_state = calcGoto(states_[state_idx], ch);
+                if (!new_state.empty()) {
+                    auto [new_state_idx, success] = addState(new_state);
+                    if (success) { pending_states.push_back(new_state_idx); }
+                    action_tbl_[state_idx][ch] = (new_state_idx << kActionTblFlagCount) + kShiftBit;
                 }
             }
         }
-    } while (unmarked_states.size() > 0);
+    } while (pending_states.size() > 0);
 
     // Build lookahead sets:
 
@@ -50,24 +44,21 @@ void LRBuilder::buildAnalizer() {
     assert(states_[0].size() > 0);
     states_[0].begin()->second.la.addValue(0);  // Add $end symbol to the lookahead set of
                                                 // the $accept -> start production
-    int state_count = (int)states_.size();
-    for (int state_idx = 0; state_idx < state_count; state_idx++) {
+    for (unsigned state_idx = 0; state_idx < states_.size(); ++state_idx) {
         auto it = states_[state_idx].begin();
         while (it != states_[state_idx].end()) {
             // item = [B -> gamma . delta, #]
-            State closure;
-            // closure = calcClosure(item)
-            calcClosure(it->first, closure);
+            StateItem item;
+            item.la.addValue(kTokenDefault);
+            State closure = calcClosure({{it->first, item}});
             auto it2 = closure.begin();
             while (it2 != closure.end()) {
-                int prod_no = it2->first.prod_no;
-                const auto& prod = grammar_.getProductionInfo(prod_no);
-                int next_ch_idx = it2->first.pos;
+                const auto& prod = grammar_.getProductionInfo(it2->first.n_prod);
+                unsigned next_ch_idx = it2->first.pos;
                 assert(next_ch_idx <= prod.right.size());
-                if (next_ch_idx < prod.right.size())  // Not final position
-                {
+                if (next_ch_idx < prod.right.size()) {  // Not final position
                     int goto_st = -1;
-                    int next_ch = prod.right[next_ch_idx];
+                    unsigned next_ch = prod.right[next_ch_idx];
                     if (next_ch & kNontermFlag)  // The next character is nonterminal
                         goto_st = goto_tbl_[state_idx][next_ch & ~kNontermFlag];
                     else if (action_tbl_[state_idx][next_ch] >= 0)  // Token
@@ -77,7 +68,7 @@ void LRBuilder::buildAnalizer() {
                     // *it2 is A -> alpha . X beta
                     // goto_item is A -> alpha X . beta
                     auto it3 = states_[goto_st].find(
-                        {it2->first.prod_no, it2->first.pos + 1});  // Find goto_item in goto(*it2, X)
+                        {it2->first.n_prod, it2->first.pos + 1});  // Find goto_item in goto(*it2, X)
                     assert(it3 != states_[goto_st].end());
                     ValueSet la = it2->second.la;
                     if (la.contains(kTokenDefault)) {  // If '#' belongs la
@@ -96,12 +87,12 @@ void LRBuilder::buildAnalizer() {
     bool change = false;
     do {
         change = false;
-        for (state_idx = 0; state_idx < state_count; state_idx++) {
+        for (unsigned state_idx = 0; state_idx < states_.size(); ++state_idx) {
             auto it = states_[state_idx].begin();
             while (it != states_[state_idx].end()) {
                 // Accept lookahead characters
-                for (int item = 0; item < (int)it->second.accept_la.size(); item++) {
-                    ValueSet new_la = it->second.accept_la[item]->la - it->second.la;
+                for (const auto* accept_from : it->second.accept_la) {
+                    ValueSet new_la = accept_from->la - it->second.la;
                     if (!new_la.empty()) {
                         it->second.la |= new_la;
                         change = true;
@@ -114,20 +105,19 @@ void LRBuilder::buildAnalizer() {
 
     // Generate actions :
 
-    for (state_idx = 0; state_idx < state_count; state_idx++) {
-        State closure;
-        calcClosureSet(states_[state_idx], closure);
+    for (unsigned state_idx = 0; state_idx < states_.size(); ++state_idx) {
+        State closure = calcClosure(states_[state_idx]);
         auto it = closure.begin();
         while (it != closure.end()) {
-            int prod_no = it->first.prod_no;
-            const auto& prod = grammar_.getProductionInfo(prod_no);
-            int next_ch_idx = it->first.pos;
+            unsigned n_prod = it->first.n_prod;
+            const auto& prod = grammar_.getProductionInfo(n_prod);
+            unsigned next_ch_idx = it->first.pos;
             assert(next_ch_idx <= prod.right.size());
             if (next_ch_idx == prod.right.size()) {  // Final position
                 for (unsigned ch : it->second.la) {
                     int old_val = action_tbl_[state_idx][ch];
                     if (old_val < 0)
-                        action_tbl_[state_idx][ch] = (3 * prod_no) << kActionTblFlagCount;  // Reduce(prod_no)
+                        action_tbl_[state_idx][ch] = (3 * n_prod) << kActionTblFlagCount;  // Reduce(n_prod)
                     else if (old_val & kShiftBit) {
                         // Shift-reduce conflict :
                         const auto& token_info = grammar_.getTokenInfo(ch);
@@ -137,12 +127,11 @@ void LRBuilder::buildAnalizer() {
                             int cmp = prod_prec - prec;
                             if (cmp == 0) {
                                 if (token_info.assoc == Assoc::kLeft)
-                                    action_tbl_[state_idx][ch] = (3 * prod_no)
-                                                                 << kActionTblFlagCount;  // Reduce(prod_no)
+                                    action_tbl_[state_idx][ch] = (3 * n_prod) << kActionTblFlagCount;  // Reduce(n_prod)
                                 else if (token_info.assoc == Assoc::kNone)
                                     action_tbl_[state_idx][ch] = -1;
                             } else if (cmp > 0)
-                                action_tbl_[state_idx][ch] = (3 * prod_no) << kActionTblFlagCount;  // Reduce(prod_no)
+                                action_tbl_[state_idx][ch] = (3 * n_prod) << kActionTblFlagCount;  // Reduce(n_prod)
                         } else
                             sr_conflict_count_++;
                     } else {
@@ -160,28 +149,26 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
                                std::vector<int>& goto_list) {
     // Compress action table :
 
-    int state, state_count = (int)action_tbl_.size();
-    action_list.clear();
-    action_idx.resize(state_count);
-    for (state = 0; state < state_count; state++) {
+    action_idx.resize(action_tbl_.size());
+    for (unsigned state_idx = 0; state_idx < action_tbl_.size(); ++state_idx) {
         // Try to find equal state
-        int state2;
+        unsigned state2;
         bool found = false;
-        for (state2 = 0; state2 < state; state2++) {
-            found = std::equal(action_tbl_[state].begin(), action_tbl_[state].end(), action_tbl_[state2].begin());
+        for (state2 = 0; state2 < state_idx; state2++) {
+            found = std::equal(action_tbl_[state_idx].begin(), action_tbl_[state_idx].end(),
+                               action_tbl_[state2].begin());
             if (found) break;  // Found
         }
         if (!found) {
-            const std::vector<int>& line = action_tbl_[state];
-            action_idx[state] = (int)action_list.size();
-            int ch;
+            const std::vector<int>& line = action_tbl_[state_idx];
+            action_idx[state_idx] = (int)action_list.size();
 
             // Are there any reduce actions?
             bool can_reduce = false;
             int allowed_reduce_act = -1;
             int err_count = 0;
-            for (ch = 0; ch < grammar_.getTokenCount(); ch++) {
-                int act = line[ch];
+            for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
+                int act = line[symb];
                 if (act == -1)
                     err_count++;
                 else if (!can_reduce && !(act & kShiftBit)) {
@@ -194,8 +181,8 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
 
             // Build histogram
             std::map<int, int> histo;
-            for (ch = 0; ch < grammar_.getTokenCount(); ch++) {
-                int act = line[ch];
+            for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
+                int act = line[symb];
                 if (!can_reduce || (act != -1)) {
                     int freq = 1;
                     if (can_reduce && !(act & kShiftBit)) freq += err_count;
@@ -215,17 +202,17 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
             }
 
             // Build list
-            for (ch = 0; ch < grammar_.getTokenCount(); ch++) {
-                int act = line[ch];
+            for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
+                int act = line[symb];
                 if (!can_reduce || (act != -1)) {
                     if (act != most_freq_act) {
-                        action_list.push_back(ch);
+                        action_list.push_back(symb);
                         // if (act == idNonassocError) act = -1;
                         action_list.push_back(act);
                     }
                 } else {
                     if (most_freq_act & kShiftBit) {
-                        action_list.push_back(ch);
+                        action_list.push_back(symb);
                         action_list.push_back(allowed_reduce_act);
                     }
                 }
@@ -234,22 +221,21 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
             action_list.push_back(-1);
             action_list.push_back(most_freq_act);
         } else
-            action_idx[state] = action_idx[state2];
+            action_idx[state_idx] = action_idx[state2];
     }
 
     // Compress goto table :
 
-    goto_list.clear();
     goto_idx.resize(grammar_.getNontermCount());
-    for (int nonterm = 0; nonterm < grammar_.getNontermCount(); nonterm++) {
+    for (unsigned nonterm = 0; nonterm < grammar_.getNontermCount(); ++nonterm) {
         goto_idx[nonterm] = (int)goto_list.size();
 
         // Find the most frequent state :
 
         std::map<int, int> histo;
         // Build histogram
-        for (state = 0; state < state_count; state++) {
-            int new_state = goto_tbl_[state][nonterm];
+        for (unsigned state_idx = 0; state_idx < goto_tbl_.size(); ++state_idx) {
+            int new_state = goto_tbl_[state_idx][nonterm];
             if (new_state != -1) {
                 std::pair<std::map<int, int>::iterator, bool> ins_res = histo.insert(std::pair<int, int>(new_state, 1));
                 if (!ins_res.second) ins_res.first->second++;
@@ -267,10 +253,10 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
         }
 
         // Build list
-        for (state = 0; state < state_count; state++) {
-            int state2 = goto_tbl_[state][nonterm];
+        for (unsigned state_idx = 0; state_idx < goto_tbl_.size(); ++state_idx) {
+            int state2 = goto_tbl_[state_idx][nonterm];
             if ((state2 != -1) && (state2 != most_freq_state)) {
-                goto_list.push_back(state);
+                goto_list.push_back(state_idx);
                 goto_list.push_back(state2);
             }
         }
@@ -280,169 +266,81 @@ void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& a
     }
 }
 
-void LRBuilder::calcFirst(const std::vector<int>& seq, ValueSet& first) {
-    first.clear();
+ValueSet LRBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
+    ValueSet first;
     bool is_empty_included = true;
     // Look through symbols of the sequence
-    for (int i = 0; i < (int)seq.size(); i++) {
-        int ch = seq[i];
-
+    for (auto it = seq.begin() + pos; it != seq.end(); ++it) {
         is_empty_included = false;
-        if (ch & kNontermFlag)  // If nonterminal
+        if (*it & kNontermFlag)  // If nonterminal
         {
             // Add symbols from FIRST(ch) excepts the $empty to FIRST(seq)
-            first |= first_tbl_[ch & ~kNontermFlag];
+            first |= first_tbl_[*it & ~kNontermFlag];
             if (first.contains(kTokenEmpty))  // Is $empty included
             {
                 first.removeValue(kTokenEmpty);
                 is_empty_included = true;
             }
-        } else                   // If terminal
-            first.addValue(ch);  // Just add the terminal
+        } else                    // If terminal
+            first.addValue(*it);  // Just add the terminal
 
         if (!is_empty_included) break;
     }
 
-    if (is_empty_included)
-        first.addValue(kTokenEmpty);  // If FIRST(production) includes the empty character
-                                      // add $empty to FIRST(left)
+    // If FIRST(production) includes the empty character add $empty to FIRST(left)
+    if (is_empty_included) first.addValue(kTokenEmpty);
+    return first;
 }
 
-void LRBuilder::genFirstTbl() {
-    bool change;
-    // clear FIRST table
-    assert(grammar_.getNontermCount() > 0);
-    first_tbl_.resize(grammar_.getNontermCount());
-    for (int i = 0; i < (int)first_tbl_.size(); i++) first_tbl_[i].clear();
-    do {
-        change = false;
-        // Look through all productions
-        int prod_no, prod_count = (int)grammar_.getProductionCount();
-        for (prod_no = 0; prod_no < prod_count; prod_no++) {
-            const auto& prod = grammar_.getProductionInfo(prod_no);
-            int left = prod.left;
-            assert(left & kNontermFlag);
-            std::vector<int> right;
-            std::copy(prod.right.begin(), prod.right.end(), std::back_inserter(right));
-            ValueSet& cur_first_set = first_tbl_[left & ~kNontermFlag];
-
-            ValueSet first;
-            // Calculate FIRST(right)
-            calcFirst(right, first);
-            // Append FIRST(left) with FIRST(right)
-            ValueSet new_chars = first - cur_first_set;
-            if (!new_chars.empty()) {
-                cur_first_set |= first;
-                change = true;
-            }
-        }
-    } while (change);  // Do until no changes have been made
-}
-
-void LRBuilder::genAetaTbl() {
-    bool change;
-    // Initialize Aeta table
-    Aeta_tbl_.resize(grammar_.getNontermCount());
-    for (int i = 0; i < grammar_.getNontermCount(); i++) {
-        Aeta_tbl_[i].clear();
-        Aeta_tbl_[i].addValue(i);
-    }
-    int prod_no, prod_count = (int)grammar_.getProductionCount();
-    do {
-        change = false;
-        // Look through all productions
-        for (prod_no = 0; prod_no < prod_count; prod_no++) {
-            const auto& prod = grammar_.getProductionInfo(prod_no);
-            int left = prod.left;
-            assert(left & kNontermFlag);
-            if (!prod.right.empty()) {
-                int right = prod.right[0];
-                if (right & kNontermFlag)  // First production symbol is nonterminal
-                {
-                    for (int nonterm = 0; nonterm < grammar_.getNontermCount(); nonterm++) {
-                        if (Aeta_tbl_[nonterm].contains(left & ~kNontermFlag) &&
-                            !Aeta_tbl_[nonterm].contains(right & ~kNontermFlag)) {
-                            Aeta_tbl_[nonterm].addValue(right & ~kNontermFlag);
-                            change = true;
-                        }
-                    }
-                }
-            }
-        }
-    } while (change);  // Do until no changes have been made
-}
-
-void LRBuilder::calcGoto(const State& src, int ch, State& tgt) {
-    tgt.clear();
+LRBuilder::State LRBuilder::calcGoto(const State& s, unsigned symb) {
+    State tgt;
     ValueSet nonkern;
 
     // Look through source items
-    auto it = src.begin();
-    while (it != src.end()) {
-        int prod_no = it->first.prod_no;
-        const auto& prod = grammar_.getProductionInfo(prod_no);
-        int next_ch_idx = it->first.pos;
+    auto it = s.begin();
+    while (it != s.end()) {
+        unsigned n_prod = it->first.n_prod;
+        const auto& prod = grammar_.getProductionInfo(n_prod);
+        unsigned next_ch_idx = it->first.pos;
         assert(next_ch_idx <= prod.right.size());
-        if (next_ch_idx < prod.right.size()) {  // Not final position
-            int next_ch = prod.right[next_ch_idx];
-            if (next_ch & kNontermFlag)  // The next character is nonterminal
-                nonkern |= Aeta_tbl_[next_ch & ~kNontermFlag];
-            if (next_ch == ch) {
-                tgt.emplace(std::piecewise_construct, std::make_tuple(prod_no, it->first.pos + 1),
-                            std::tuple<>());  // Add to goto(src, ch)
-            }
+        if (next_ch_idx < prod.right.size()) {
+            unsigned next_ch = prod.right[next_ch_idx];
+            if (next_ch & kNontermFlag) nonkern |= Aeta_tbl_[next_ch & ~kNontermFlag];
+            if (next_ch == symb) { tgt.emplace(Position{n_prod, it->first.pos + 1}, StateItem{}); }
         }
         it++;
     }
 
     // Run through nonkernel items
-    int prod_no, prod_count = (int)grammar_.getProductionCount();
-    for (prod_no = 0; prod_no < prod_count; prod_no++) {
-        const auto& prod = grammar_.getProductionInfo(prod_no);
-        int left = prod.left;
-        assert(left & kNontermFlag);
-        if (nonkern.contains(left & ~kNontermFlag) &&  // Is production of nonkernel item
-            !prod.right.empty())                       // Nonempty production
-        {
-            int right = prod.right[0];
-            if (right == ch) {
-                tgt.emplace(std::piecewise_construct, std::make_tuple(prod_no, 1),
-                            std::tuple<>());  // Add to goto(src, ch)
-            }
+    for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
+        const auto& prod = grammar_.getProductionInfo(n_prod);
+        assert(prod.left & kNontermFlag);
+        if (nonkern.contains(prod.left & ~kNontermFlag) && !prod.right.empty() && prod.right[0] == symb) {
+            tgt.emplace(Position{n_prod, 1}, StateItem{});
         }
     }
+
+    return tgt;
 }
 
-void LRBuilder::calcClosure(const StateItemPos& pos, State& closure) {
-    StateItem item;
-    item.la.addValue(kTokenDefault);
-    calcClosureSet({{pos, item}}, closure);
-}
-
-void LRBuilder::calcClosureSet(const State& src, State& closure) {
+LRBuilder::State LRBuilder::calcClosure(const State& s) {
     ValueSet nonkern;
     std::vector<ValueSet> nonterm_la(grammar_.getNontermCount());
-    closure = src;
+    State closure = s;
     // Look through kernel items
-    auto it = src.begin();
-    while (it != src.end()) {
-        int prod_no = it->first.prod_no;
-        const auto& prod = grammar_.getProductionInfo(prod_no);
-        int next_ch_idx = it->first.pos;
+    auto it = s.begin();
+    while (it != s.end()) {
+        const auto& prod = grammar_.getProductionInfo(it->first.n_prod);
+        unsigned next_ch_idx = it->first.pos;
         assert(next_ch_idx <= prod.right.size());
-        if (next_ch_idx < prod.right.size())  // Not final position
-        {
-            int next_ch = prod.right[next_ch_idx];
-            if (next_ch & kNontermFlag)  // The next character is nonterminal
-            {
+        if (next_ch_idx < prod.right.size()) {
+            unsigned next_ch = prod.right[next_ch_idx];
+            if (next_ch & kNontermFlag) {
                 // A -> alpha . B beta
                 nonkern.addValue(next_ch & ~kNontermFlag);
 
-                ValueSet la;
-                std::vector<int> seq;
                 // seq = beta
-                std::copy(prod.right.begin() + next_ch_idx + 1, prod.right.end(), std::back_inserter(seq));
-                calcFirst(seq, la);  // Calculate FIRST(beta);
+                ValueSet la = calcFirst(prod.right, next_ch_idx + 1);  // Calculate FIRST(beta);
                 if (la.contains(kTokenEmpty)) {
                     la.removeValue(kTokenEmpty);
                     la |= it->second.la;  // Replace $empty with LA(item)
@@ -457,78 +355,116 @@ void LRBuilder::calcClosureSet(const State& src, State& closure) {
     do {
         change = false;
         // Run through nonkernel items
-        int prod_no, prod_count = (int)grammar_.getProductionCount();
-        for (prod_no = 0; prod_no < prod_count; prod_no++) {
-            const auto& prod = grammar_.getProductionInfo(prod_no);
-            int left = prod.left;
-            assert(left & kNontermFlag);
-            if (nonkern.contains(left & ~kNontermFlag) &&  // Is production of nonkernel item
-                !prod.right.empty())                       // Nonempty production
-            {
-                int right = prod.right[0];
-                if (right & kNontermFlag)  // The first character is nonterminal
-                {
-                    // A -> . B beta
-                    if (!nonkern.contains(right & ~kNontermFlag)) {
-                        nonkern.addValue(right & ~kNontermFlag);
-                        change = true;
-                    }
+        for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
+            const auto& prod = grammar_.getProductionInfo(n_prod);
+            assert(prod.left & kNontermFlag);
+            if (nonkern.contains(prod.left & ~kNontermFlag) && !prod.right.empty() && (prod.right[0] & kNontermFlag)) {
+                // A -> . B beta
+                if (!nonkern.contains(prod.right[0] & ~kNontermFlag)) {
+                    nonkern.addValue(prod.right[0] & ~kNontermFlag);
+                    change = true;
+                }
 
-                    ValueSet la;
-                    std::vector<int> seq;
-                    // seq = beta
-                    std::copy(prod.right.begin() + 1, prod.right.end(), std::back_inserter(seq));
-                    calcFirst(seq, la);  // Calculate FIRST(beta);
-                    if (la.contains(kTokenEmpty)) {
-                        la.removeValue(kTokenEmpty);
-                        la |= nonterm_la[left & ~kNontermFlag];  // Replace $empty with LA(item)
-                    }
-                    ValueSet new_la = la - nonterm_la[right & ~kNontermFlag];
-                    if (!new_la.empty()) {
-                        nonterm_la[right & ~kNontermFlag] |= new_la;
-                        change = true;
-                    }
+                // seq = beta
+                ValueSet la = calcFirst(prod.right, 1);  // Calculate FIRST(beta);
+                if (la.contains(kTokenEmpty)) {
+                    la.removeValue(kTokenEmpty);
+                    la |= nonterm_la[prod.left & ~kNontermFlag];  // Replace $empty with LA(item)
+                }
+                ValueSet new_la = la - nonterm_la[prod.right[0] & ~kNontermFlag];
+                if (!new_la.empty()) {
+                    nonterm_la[prod.right[0] & ~kNontermFlag] |= new_la;
+                    change = true;
                 }
             }
         }
     } while (change);
 
     // Add nonkernel items
-    int prod_no, prod_count = (int)grammar_.getProductionCount();
-    for (prod_no = 0; prod_no < prod_count; prod_no++) {
-        int left = grammar_.getProductionInfo(prod_no).left;
+    for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
+        unsigned left = grammar_.getProductionInfo(n_prod).left;
         assert(left & kNontermFlag);
         if (nonkern.contains(left & ~kNontermFlag)) {  // Is production of nonkernel item
-            closure.emplace(std::piecewise_construct, std::make_tuple(prod_no, 0),
-                            std::forward_as_tuple(nonterm_la[left & ~kNontermFlag]));
+            closure.emplace(Position{n_prod, 0}, StateItem{nonterm_la[left & ~kNontermFlag], {}});
         }
     }
+
+    return closure;
 }
 
-bool LRBuilder::addState(const State& s, int& state_idx) {
-    int state, state_count = (int)states_.size();
-    for (state = 0; state < state_count; state++) {
-        if ((states_[state].size() == s.size()) &&
-            std::equal(states_[state].begin(), states_[state].end(), s.begin(),
+std::pair<unsigned, bool> LRBuilder::addState(const State& s) {
+    for (unsigned state_idx = 0; state_idx < states_.size(); ++state_idx) {
+        if ((states_[state_idx].size() == s.size()) &&
+            std::equal(states_[state_idx].begin(), states_[state_idx].end(), s.begin(),
                        [](const auto& i1, const auto& i2) { return i1.first == i2.first; })) {
-            state_idx = state;  // Return old state index
-            return false;
+            return {state_idx, false};  // Return old state index
         }
     }
     // Add new state
     states_.push_back(s);
-    action_tbl_.push_back(std::vector<int>(grammar_.getTokenCount()));
-    goto_tbl_.push_back(std::vector<int>(grammar_.getNontermCount()));
-    for (int token = 0; token < grammar_.getTokenCount(); token++) action_tbl_[state_count][token] = -1;
-    for (int nonterm = 0; nonterm < grammar_.getNontermCount(); nonterm++) goto_tbl_[state_count][nonterm] = -1;
-    state_idx = state_count;
-    return true;
+    action_tbl_.emplace_back(grammar_.getTokenCount(), -1);
+    goto_tbl_.emplace_back(grammar_.getNontermCount(), -1);
+    return {static_cast<unsigned>(states_.size() - 1), true};
 }
 
-void LRBuilder::printItemSet(std::ostream& outp, const State& item) {
-    auto it = item.begin();
-    while (it != item.end()) {
-        grammar_.printProduction(outp, it->first.prod_no, it->first.pos);
+void LRBuilder::buildFirstTbl() {
+    first_tbl_.resize(grammar_.getNontermCount());
+    assert(!first_tbl_.empty());
+
+    bool change;
+    do {
+        change = false;
+        // Look through all productions
+        for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
+            const auto& prod = grammar_.getProductionInfo(n_prod);
+            assert(prod.left & kNontermFlag);
+            ValueSet& cur_first_set = first_tbl_[prod.left & ~kNontermFlag];
+
+            // Calculate FIRST(right)
+            ValueSet first = calcFirst(prod.right);
+            // Append FIRST(left) with FIRST(right)
+            ValueSet new_chars = first - cur_first_set;
+            if (!new_chars.empty()) {
+                cur_first_set |= first;
+                change = true;
+            }
+        }
+    } while (change);
+}
+
+void LRBuilder::buildAetaTbl() {
+    Aeta_tbl_.resize(grammar_.getNontermCount());
+    assert(!Aeta_tbl_.empty());
+
+    for (unsigned nonterm = 0; nonterm < grammar_.getNontermCount(); ++nonterm) {
+        Aeta_tbl_[nonterm].addValue(nonterm);
+    }
+
+    bool change;
+    do {
+        change = false;
+        for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
+            const auto& prod = grammar_.getProductionInfo(n_prod);
+            assert(prod.left & kNontermFlag);
+            if (!prod.right.empty()) {
+                if (prod.right[0] & kNontermFlag) {
+                    for (unsigned nonterm = 0; nonterm < grammar_.getNontermCount(); ++nonterm) {
+                        if (Aeta_tbl_[nonterm].contains(prod.left & ~kNontermFlag) &&
+                            !Aeta_tbl_[nonterm].contains(prod.right[0] & ~kNontermFlag)) {
+                            Aeta_tbl_[nonterm].addValue(prod.right[0] & ~kNontermFlag);
+                            change = true;
+                        }
+                    }
+                }
+            }
+        }
+    } while (change);
+}
+
+void LRBuilder::printItemSet(std::ostream& outp, const State& s) {
+    auto it = s.begin();
+    while (it != s.end()) {
+        grammar_.printProduction(outp, it->first.n_prod, it->first.pos);
         outp << " [";
         for (unsigned la_ch : it->second.la) { outp << ' ' << grammar_.symbolText(la_ch); }
         outp << " ]" << std::endl;
@@ -538,7 +474,7 @@ void LRBuilder::printItemSet(std::ostream& outp, const State& item) {
 
 void LRBuilder::printFirstTbl(std::ostream& outp) {
     outp << "---=== FIRST table : ===---" << std::endl << std::endl;
-    for (int nonterm = 0; nonterm < grammar_.getNontermCount(); nonterm++) {
+    for (unsigned nonterm = 0; nonterm < grammar_.getNontermCount(); ++nonterm) {
         outp << "    FIRST(" << grammar_.getName(kNontermFlag | nonterm) << ") = { ";
         const ValueSet& first = first_tbl_[nonterm];
         bool colon = false;
@@ -554,7 +490,7 @@ void LRBuilder::printFirstTbl(std::ostream& outp) {
 
 void LRBuilder::printAetaTbl(std::ostream& outp) {
     outp << "---=== Aeta table : ===---" << std::endl << std::endl;
-    for (int nonterm = 0; nonterm < grammar_.getNontermCount(); nonterm++) {
+    for (unsigned nonterm = 0; nonterm < grammar_.getNontermCount(); ++nonterm) {
         outp << "    Aeta(" << grammar_.getName(kNontermFlag | nonterm) << ") = { ";
         const ValueSet& Aeta = Aeta_tbl_[nonterm];
         bool colon = false;
@@ -571,8 +507,7 @@ void LRBuilder::printAetaTbl(std::ostream& outp) {
 void LRBuilder::printStates(std::ostream& outp, std::vector<int>& action_idx, std::vector<int>& action_list,
                             std::vector<int>& goto_idx, std::vector<int>& goto_list) {
     outp << "---=== LALR analyser states : ===---" << std::endl << std::endl;
-    int state_idx, state_count = (int)states_.size();
-    for (state_idx = 0; state_idx < state_count; state_idx++) {
+    for (unsigned state_idx = 0; state_idx < states_.size(); state_idx++) {
         outp << "State " << state_idx << ":" << std::endl;
         printItemSet(outp, states_[state_idx]);
         outp << std::endl;
@@ -596,7 +531,7 @@ void LRBuilder::printStates(std::ostream& outp, std::vector<int>& action_idx, st
         outp << std::endl;
 
         // Goto
-        for (int nonterm = 0; nonterm < grammar_.getNontermCount(); nonterm++) {
+        for (unsigned nonterm = 0; nonterm < grammar_.getNontermCount(); ++nonterm) {
             int idx = goto_idx[nonterm];
             while (1) {
                 int state_idx2 = goto_list[idx++];
