@@ -3,106 +3,106 @@
 #include "grammar.h"
 
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
-const int tt_act = 256;
-const int tt_int = 257;
-const int tt_string = 258;
-const int tt_symb = 259;
-const int tt_id = 260;
-const int tt_token = 261;
-const int tt_action = 262;
-const int tt_option = 263;
-const int tt_left = 264;
-const int tt_right = 265;
-const int tt_nonassoc = 266;
-const int tt_prec = 267;
-const int tt_sep = 268;
+namespace detail {
+template<typename InputIt>
+InputIt from_utf8(InputIt in, InputIt in_end, uint32_t* pcode) {
+    if (in >= in_end) { return in; }
+    uint32_t code = static_cast<uint8_t>(*in);
+    if ((code & 0xC0) == 0xC0) {
+        static const uint32_t mask_tbl[] = {0xFF, 0x1F, 0xF, 0x7};
+        static const uint32_t count_tbl[] = {1, 1, 1, 1, 2, 2, 3, 0};
+        uint32_t count = count_tbl[(code >> 3) & 7];  // continuation byte count
+        if (in_end - in <= count) { return in; }
+        code &= mask_tbl[count];
+        while (count > 0) {
+            code = (code << 6) | ((*++in) & 0x3F);
+            --count;
+        }
+    }
+    *pcode = code;
+    return ++in;
+}
+}  // namespace detail
 
-union LValType {
-    int i;
-    char* str;
+enum {
+    tt_eof = 0,
+    tt_symb = 256,
+    tt_id,
+    tt_error_id,
+    tt_token_id,
+    tt_action_id,
+    tt_string,
+    tt_token,
+    tt_action,
+    tt_option,
+    tt_left,
+    tt_right,
+    tt_nonassoc,
+    tt_prec,
+    tt_sep,
+    tt_unterminated_token,
 };
+
+namespace lex_detail {
+#include "lex_defs.h"
+}
 
 // Input file parser class
 class Parser {
  public:
-// Include constant definitions
-#include "lex_def.h"
-
-    Parser(std::istream& input, Grammar& grammar) : input_(input), grammar_(grammar) {}
+    Parser(std::istream& input, std::string file_name, Grammar& grammar);
     int parse();
-    const std::string& getErrorString() const { return err_string_; };
 
  private:
-    static int symb_to_idx_[];
-    static int def_[];
-    static int base_[];
-    static int next_[];
-    static int check_[];
-    static int accept_list_[];
-    static int accept_idx_[];
+    struct TokenInfo {
+        unsigned n_col = 0;
+        std::variant<unsigned, std::string> val;
+    };
+
+    struct ErrorLogger {
+        Parser* parser;
+        std::stringstream ss;
+        explicit ErrorLogger(Parser* in_parser) : parser(in_parser) {}
+        ErrorLogger(ErrorLogger&& el) noexcept : parser(el.parser) { el.parser = nullptr; }
+        ~ErrorLogger() {
+            if (parser) { parser->printError(ss.str()); }
+        }
+        ErrorLogger(const ErrorLogger&) = delete;
+        ErrorLogger& operator=(const ErrorLogger&) = delete;
+        ErrorLogger& operator=(ErrorLogger&&) = delete;
+        template<typename Ty>
+        ErrorLogger& operator<<(const Ty& v) {
+            ss << v;
+            return *this;
+        }
+        operator int() const { return -1; }
+    };
 
     std::istream& input_;
-    int sc_ = sc_initial;
-    int state_ = sc_initial;
+    std::string file_name_;
+    const char* current_line_ = nullptr;
+    unsigned n_line_ = 1, n_col_ = 1;
     std::vector<int> sc_stack_;
-    std::vector<int> state_stack_;
-    std::vector<char> text_;
-    int line_no_ = 1;
-    LValType lval_;
-    std::vector<char> str_;  // String token
+    lex_detail::StateData lex_state_;
+    TokenInfo tkn_;
     Grammar& grammar_;
-    std::string err_string_;
-
     std::unordered_map<std::string, std::string> options_;
 
+    static int dig(char ch) { return static_cast<int>(ch - '0'); }
+    static int hdig(char ch) {
+        if ((ch >= 'a') && (ch <= 'f')) { return static_cast<int>(ch - 'a') + 10; }
+        if ((ch >= 'A') && (ch <= 'F')) { return static_cast<int>(ch - 'A') + 10; }
+        return static_cast<int>(ch - '0');
+    }
+
     int lex();
-    void pushStartCondition(int sc) {
-        sc_stack_.push_back(sc_);
-        sc_ = sc;
-    };
-    bool popStartCondition() {
-        if (sc_stack_.size() == 0) return false;
-        sc_ = sc_stack_.back();
-        sc_stack_.pop_back();
-        return true;
-    };
-
-    bool onPatternMatched(int, int&);
-    const char* getText() const { return &text_[0]; };
-    int getLeng() const { return (int)(text_.size() - 1); };
-    void reset() {
-        state_ = sc_;
-        state_stack_.clear();
-        text_.clear();
-    };
-    int getChar() {
-        char ch = 0;
-        input_.get(ch);
-        return ((int)ch & 0xFF);
-    };
-    void ungetChar() { input_.unget(); };
-
-    int errorSyntax(int);
-    int errorNameRedef(int, const std::string&);
-    int errorLeftPartIsNotNonterm(int);
-    int errorUndefAction(int, const std::string&);
-    int errorUndefNonterm(const std::string&);
-    int errorUnusedProd(const std::string&);
-    int errorPrecRedef(int, int);
-    int errorUndefToken(int, const std::string&);
-    int errorUndefPrec(int, int);
-    int errorInvUseOfPredefToken(int, int);
-    int errorInvOption(int, const std::string&);
-    int errorInvUseOfActName(int, const std::string&);
-
-    static int str_to_int(const char*);
-    static inline int dig(char ch) { return (int)(ch - '0'); };
-    static inline int hdig(char ch) {
-        if ((ch >= 'a') && (ch <= 'f')) return 10 + (int)(ch - 'a');
-        if ((ch >= 'A') && (ch <= 'F')) return 10 + (int)(ch - 'A');
-        return dig(ch);
-    };
+    int logSyntaxError(int tt);
+    ErrorLogger logError() { return ErrorLogger(this); }
+    void printError(const std::string& msg);
 };

@@ -116,8 +116,6 @@ void LRBuilder::buildAnalizer() {
 
     // Generate actions :
 
-    int sr_conflict_count = 0;
-    int rr_conflict_count = 0;
     for (state_idx = 0; state_idx < state_count; state_idx++) {
         State closure;
         calcClosureSet(states_[state_idx], closure);
@@ -146,21 +144,16 @@ void LRBuilder::buildAnalizer() {
                             } else if (cmp > 0)
                                 action_tbl_[state_idx][ch] = (3 * prod_no) << kActionTblFlagCount;  // Reduce(prod_no)
                         } else
-                            sr_conflict_count++;
+                            sr_conflict_count_++;
                     } else {
                         // Reduce-reduce conflict
-                        rr_conflict_count++;
+                        rr_conflict_count_++;
                     }
                 }
             }
             it++;
         }
     }
-
-    if (sr_conflict_count > 0)
-        std::cout << "Warning: " << sr_conflict_count << " shift/reduce conflict(s) found!" << std::endl;
-    if (rr_conflict_count > 0)
-        std::cout << "Warning: " << rr_conflict_count << " reduce/reduce conflict(s) found!" << std::endl;
 }
 
 void LRBuilder::compressTables(std::vector<int>& action_idx, std::vector<int>& action_list, std::vector<int>& goto_idx,

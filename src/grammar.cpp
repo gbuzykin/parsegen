@@ -36,7 +36,10 @@ namespace {
 
 std::vector<std::pair<std::string, int>> Grammar::getTokenList() {
     std::vector<std::pair<std::string, int>> lst;
-    for (int id = 0x103; id < token_count; ++id) { lst.emplace_back(grammarSymbolText(id), id); }
+    for (int id = 0x103; id < token_count; ++id) {
+        std::string text(grammarSymbolText(id));
+        if (text[0] != '$') { lst.emplace_back(std::move(text), id); }
+    }
     return lst;
 }
 
@@ -47,13 +50,7 @@ std::vector<std::pair<std::string, int>> Grammar::getActionList() {
 }
 
 std::string Grammar::grammarSymbolText(int id) const {
-    if (id > 0 && id < 0x100) {
-        return '\'' + str2text(std::string(1, static_cast<unsigned char>(id))) + '\'';
-    } else if (id == idEmpty) {
-        return "$empty";
-    } else if (id == idDefault) {
-        return "$default";
-    }
+    if (id > 0 && id < 0x100) { return '\'' + str2text(std::string(1, static_cast<unsigned char>(id))) + '\''; }
     return std::string(name_tbl.getName(id));
 }
 

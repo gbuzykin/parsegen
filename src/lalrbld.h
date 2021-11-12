@@ -17,6 +17,8 @@ class LRBuilder {
     void buildAnalizer();
     void compressTables(std::vector<int>& action_idx, std::vector<int>& action_list, std::vector<int>& goto_idx,
                         std::vector<int>& goto_list);
+    unsigned getSRConflictCount() const { return sr_conflict_count_; }
+    unsigned getRRConflictCount() const { return rr_conflict_count_; }
     void printFirstTbl(std::ostream& outp);
     void printAetaTbl(std::ostream& outp);
     void printStates(std::ostream& outp, std::vector<int>& action_idx, std::vector<int>& action,
@@ -44,6 +46,9 @@ class LRBuilder {
     using State = std::map<StateItemPos, StateItem>;
 
     const Grammar& grammar_;
+
+    unsigned sr_conflict_count_ = 0;
+    unsigned rr_conflict_count_ = 0;
 
     std::vector<ValueSet> first_tbl_;
     std::vector<ValueSet> Aeta_tbl_;
