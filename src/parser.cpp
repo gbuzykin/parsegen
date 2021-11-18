@@ -200,6 +200,11 @@ bool Parser::parse() {
         }
     } while (tt != tt_sep);
 
+    if (grammar_.getProductionCount() == 1) {  // Only augmenting production
+        logger::error(file_name_) << "no productions defined";
+        return false;
+    }
+
     // Check grammar
     const auto& nonterm_used = grammar_.getUsedNonterms();
     const auto& nonterm_defined = grammar_.getDefinedNonterms();
