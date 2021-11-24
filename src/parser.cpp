@@ -9,27 +9,30 @@ namespace lex_detail {
 }
 
 namespace {
-char* findEol(char* unread, char* boundary) {
-    return std::find_if(unread, boundary, [](char ch) { return ch == '\n' || ch == '\0'; });
+const char* findEol(const char* text, const char* boundary) {
+    return std::find_if(text, boundary, [](char ch) { return ch == '\n' || ch == '\0'; });
 }
-std::string_view getNextLine(char* unread, char* boundary) {
-    return std::string_view(unread, findEol(unread, boundary) - unread);
+std::string_view getNextLine(const char* text, const char* boundary) {
+    return std::string_view(text, findEol(text, boundary) - text);
 }
 }  // namespace
 
 Parser::Parser(std::istream& input, std::string file_name, Grammar& grammar)
-    : input_(input), file_name_(std::move(file_name)), lex_state_stack_({lex_detail::sc_initial}), grammar_(grammar) {}
+    : input_(input), file_name_(std::move(file_name)), grammar_(grammar) {}
 
 bool Parser::parse() {
     size_t file_sz = static_cast<size_t>(input_.seekg(0, std::ios_base::end).tellg());
-    text_ = std::make_unique<char[]>(file_sz + 1);
+    text_ = std::make_unique<char[]>(file_sz);
 
     // Read the whole file
     input_.seekg(0);
     input_.read(text_.get(), file_sz);
-    text_[input_.gcount()] = '\0';
-    lex_ctx_ = lex_detail::CtxData{text_.get(), text_.get(), text_.get(), text_.get() + input_.gcount() + 1};
-    current_line_ = getNextLine(lex_ctx_.in_next, lex_ctx_.in_boundary);
+    lex_ctx_.first = lex_ctx_.next = text_top_ = text_.get();
+    lex_ctx_.last = lex_ctx_.boundary = text_.get() + input_.gcount();
+    current_line_ = getNextLine(lex_ctx_.next, lex_ctx_.last);
+
+    lex_state_stack_.reserve(256);
+    lex_state_stack_.push_back(lex_detail::sc_initial);
 
     // Load definitions
     int prec = 0;
@@ -107,10 +110,10 @@ bool Parser::parse() {
 
     // Load grammar
     do {
-        // Read left part of the production
+        // Read left hand side of the production
         if ((tt = lex()) == tt_id) {
-            unsigned left = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
-            if (!isNonterm(left)) {
+            unsigned lhs = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
+            if (!isNonterm(lhs)) {
                 logger::error(*this, tkn_.loc) << "name is already used for tokens or actions";
                 return false;
             }
@@ -121,10 +124,10 @@ bool Parser::parse() {
             }
 
             do {
-                // Read right part of the production
+                // Read right hand side of the production
                 int prec = -1;
-                std::vector<unsigned> right;
-                right.reserve(16);
+                std::vector<unsigned> rhs;
+                rhs.reserve(16);
                 do {
                     switch (tt = lex()) {
                         case tt_prec: {  // Production precedence
@@ -158,7 +161,7 @@ bool Parser::parse() {
                                 logger::error(*this, tkn_.loc) << "name is already used for tokens or actions";
                                 return false;
                             }
-                            right.push_back(id);
+                            rhs.push_back(id);
                         } break;
                         case tt_token_id:
                         case tt_predef_id: {  // Token
@@ -168,19 +171,19 @@ bool Parser::parse() {
                             }
                             if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
                                 found_id && isToken(*found_id)) {
-                                right.push_back(*found_id);
+                                rhs.push_back(*found_id);
                             } else {
                                 logger::error(*this, tkn_.loc) << "undefined token";
                                 return false;
                             }
                         } break;
                         case tt_symb: {  // Single symbol
-                            right.push_back(std::get<unsigned>(tkn_.val));
+                            rhs.push_back(std::get<unsigned>(tkn_.val));
                         } break;
                         case tt_action_id: {  // Action
                             if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
                                 found_id && isAction(*found_id)) {
-                                right.push_back(*found_id);
+                                rhs.push_back(*found_id);
                             } else {
                                 logger::error(*this, tkn_.loc) << "undefined action";
                                 return false;
@@ -188,7 +191,7 @@ bool Parser::parse() {
                         } break;
                         case '|':
                         case ';': {
-                            grammar_.addProduction(left, std::move(right), prec);
+                            grammar_.addProduction(lhs, std::move(rhs), prec);
                         } break;
                         default: logSyntaxError(tt); return false;
                     }
@@ -209,11 +212,11 @@ bool Parser::parse() {
     const auto& nonterm_used = grammar_.getUsedNonterms();
     const auto& nonterm_defined = grammar_.getDefinedNonterms();
     for (unsigned n : nonterm_defined - nonterm_used) {
-        logger::warning(file_name_) << "unused nonterminal \'" << grammar_.getName(makeNontermId(n)) << "\'";
+        logger::warning(file_name_) << "unused nonterminal `" << grammar_.getName(makeNontermId(n)) << "`";
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
         for (unsigned n : undef) {
-            logger::error(file_name_) << "undefined nonterminal \'" << grammar_.getName(makeNontermId(n)) << "\'";
+            logger::error(file_name_) << "undefined nonterminal `" << grammar_.getName(makeNontermId(n)) << "`";
         }
         return false;
     }
@@ -225,16 +228,27 @@ int Parser::lex() {
     tkn_.loc = {n_line_, n_col_, n_col_};
 
     while (true) {
-        if (lex_ctx_.out_last > text_.get() && *(lex_ctx_.out_last - 1) == '\n') {
-            current_line_ = getNextLine(lex_ctx_.in_next, lex_ctx_.in_boundary);
+        if (lex_ctx_.next > text_.get() && *(lex_ctx_.next - 1) == '\n') {
+            current_line_ = getNextLine(lex_ctx_.next, lex_ctx_.last);
             ++n_line_, n_col_ = 1;
             tkn_.loc = {n_line_, n_col_, n_col_};
         }
-        lex_ctx_.out_first = lex_ctx_.out_last;
+        lex_ctx_.first = lex_ctx_.next;
         int pat = lex_detail::lex(lex_ctx_, lex_state_stack_);
-        unsigned lexeme_len = static_cast<unsigned>(lex_ctx_.out_last - lex_ctx_.out_first);
+        if (pat == lex_detail::err_end_of_input) {
+            int sc = lex_state_stack_.back();
+            tkn_.loc.col_last = tkn_.loc.col_first;
+            if (sc == lex_detail::sc_string || sc == lex_detail::sc_symb) { return tt_unterm_token; }
+            return tt_eof;
+        }
+        unsigned lexeme_len = static_cast<unsigned>(lex_ctx_.next - lex_ctx_.first);
         n_col_ += lexeme_len;
         tkn_.loc.col_last = n_col_ - 1;
+
+        auto store_id_text = [&text = text_top_](const char* first, unsigned len) {
+            text = std::copy(first, first + len, text);
+            return std::string_view(text - len, len);
+        };
 
         std::optional<char> escape;
         switch (pat) {
@@ -246,25 +260,27 @@ int Parser::lex() {
             case lex_detail::pat_escape_r: escape = '\r'; break;
             case lex_detail::pat_escape_t: escape = '\t'; break;
             case lex_detail::pat_escape_v: escape = '\v'; break;
-            case lex_detail::pat_escape_other: escape = lex_ctx_.out_first[1]; break;
+            case lex_detail::pat_escape_other: escape = lex_ctx_.first[1]; break;
             case lex_detail::pat_escape_hex: {
-                escape = hdig(lex_ctx_.out_first[2]);
-                if (lexeme_len > 3) { *escape = (*escape << 4) + hdig(lex_ctx_.out_first[3]); }
+                escape = hdig(lex_ctx_.first[2]);
+                if (lexeme_len > 3) { *escape = (*escape << 4) + hdig(lex_ctx_.first[3]); }
             } break;
             case lex_detail::pat_escape_oct: {
-                escape = dig(lex_ctx_.out_first[1]);
-                if (lexeme_len > 2) { *escape = (*escape << 3) + dig(lex_ctx_.out_first[2]); }
-                if (lexeme_len > 3) { *escape = (*escape << 3) + dig(lex_ctx_.out_first[3]); }
+                escape = dig(lex_ctx_.first[1]);
+                if (lexeme_len > 2) { *escape = (*escape << 3) + dig(lex_ctx_.first[2]); }
+                if (lexeme_len > 3) { *escape = (*escape << 3) + dig(lex_ctx_.first[3]); }
             } break;
 
             // ------ strings
             case lex_detail::pat_string: {
-                str_start = lex_ctx_.out_last;
+                str_start = text_top_;
                 lex_state_stack_.push_back(lex_detail::sc_string);
             } break;
-            case lex_detail::pat_string_seq: break;
+            case lex_detail::pat_string_seq: {
+                text_top_ = std::copy(lex_ctx_.first, lex_ctx_.next, text_top_);
+            } break;
             case lex_detail::pat_string_close: {
-                tkn_.val = std::string_view(str_start, lex_ctx_.out_first - str_start);
+                tkn_.val = std::string_view(str_start, text_top_ - str_start);
                 lex_state_stack_.pop_back();
                 return tt_string;
             } break;
@@ -275,7 +291,7 @@ int Parser::lex() {
                 lex_state_stack_.push_back(lex_detail::sc_symb);
             } break;
             case lex_detail::pat_symb_other: {
-                tkn_.val = static_cast<unsigned char>(*lex_ctx_.out_first);
+                tkn_.val = static_cast<unsigned char>(*lex_ctx_.first);
             } break;
             case lex_detail::pat_symb_close: {
                 lex_state_stack_.pop_back();
@@ -284,29 +300,29 @@ int Parser::lex() {
 
             // ------ identifiers
             case lex_detail::pat_id: {
-                tkn_.val = std::string_view(lex_ctx_.out_first, lexeme_len);
+                tkn_.val = store_id_text(lex_ctx_.first, lexeme_len);
                 return tt_id;
             } break;
             case lex_detail::pat_predef_id: {
-                tkn_.val = std::string_view(lex_ctx_.out_first, lexeme_len);
+                tkn_.val = store_id_text(lex_ctx_.first, lexeme_len);
                 return tt_predef_id;
             } break;
             case lex_detail::pat_internal_id: {
-                tkn_.val = std::string_view(lex_ctx_.out_first, lexeme_len);
+                tkn_.val = store_id_text(lex_ctx_.first, lexeme_len);
                 return tt_internal_id;
             } break;
             case lex_detail::pat_token_id: {  // [id]
-                tkn_.val = std::string_view(lex_ctx_.out_first + 1, lexeme_len - 2);
+                tkn_.val = store_id_text(lex_ctx_.first + 1, lexeme_len - 2);
                 return tt_token_id;
             } break;
             case lex_detail::pat_action_id: {  // {id}
-                tkn_.val = std::string_view(lex_ctx_.out_first + 1, lexeme_len - 2);
+                tkn_.val = store_id_text(lex_ctx_.first + 1, lexeme_len - 2);
                 return tt_action_id;
             } break;
 
             // ------ comment
             case lex_detail::pat_comment: {  // Eat up comment
-                lex_ctx_.in_next = findEol(lex_ctx_.in_next, lex_ctx_.in_boundary);
+                lex_ctx_.next = findEol(lex_ctx_.next, lex_ctx_.last);
             } break;
 
                 // ------ other
@@ -318,19 +334,17 @@ int Parser::lex() {
             case lex_detail::pat_nonassoc: return tt_nonassoc;
             case lex_detail::pat_prec: return tt_prec;
             case lex_detail::pat_sep: return tt_sep;
-            case lex_detail::pat_other: return static_cast<unsigned char>(*lex_ctx_.out_first);
-            case lex_detail::pat_eof: return tt_eof;
+            case lex_detail::pat_other: return static_cast<unsigned char>(*lex_ctx_.first);
             case lex_detail::pat_whitespace: tkn_.loc.col_first = n_col_; break;
             case lex_detail::pat_nl: break;
-            case lex_detail::pat_unterminated_token: return tt_unterminated_token;
+            case lex_detail::pat_unterm_token: return tt_unterm_token;
             default: return -1;
         }
 
         // Process escape character
         if (escape) {
             if (lex_state_stack_.back() == lex_detail::sc_string) {
-                *lex_ctx_.out_first = *escape;
-                lex_ctx_.out_last = lex_ctx_.out_first + 1;
+                *text_top_++ = *escape;
             } else {
                 tkn_.val = static_cast<unsigned char>(*escape);
             }
@@ -343,7 +357,7 @@ void Parser::logSyntaxError(int tt) const {
     std::string_view msg;
     switch (tt) {
         case tt_eof: msg = "unexpected end of file"; break;
-        case tt_unterminated_token: msg = "unterminated token"; break;
+        case tt_unterm_token: msg = "unterminated token"; break;
         default: msg = "unexpected token"; break;
     }
     logger::error(*this, tkn_.loc) << msg;

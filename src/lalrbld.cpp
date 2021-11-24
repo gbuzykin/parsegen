@@ -20,7 +20,7 @@ void LRBuilder::buildAnalizer() {
     goto_tbl.reserve(100);
     pending_states.reserve(100);
 
-    auto add_state = [&states = states_, &grammar = grammar_, &action_tbl, &goto_tbl](const PositionSet& s) {
+    auto add_state = [&states = states_, &grammar = grammar_, &action_tbl, &goto_tbl](PositionSet s) {
         auto it = std::find_if(states.begin(), states.end(), [&s](const auto& s2) {
             return s2.size() == s.size() &&
                    std::equal(s2.begin(), s2.end(), s.begin(),
@@ -28,23 +28,23 @@ void LRBuilder::buildAnalizer() {
         });
         if (it != states.end()) { return std::make_pair(static_cast<unsigned>(it - states.begin()), false); }
         // Add new state
-        states.push_back(s);
+        states.emplace_back(std::move(s));
         action_tbl.emplace_back(grammar.getTokenCount());
         goto_tbl.emplace_back(grammar.getNontermCount(), 0);
         return std::make_pair(static_cast<unsigned>(states.size()) - 1, true);
     };
 
     // Add initial state
-    pending_states.push_back(add_state({{Position{0, 0}, LookAheadSet{}}}).first);
+    pending_states.push_back(add_state(makeSinglePositionSet(Position{0, 0}, LookAheadSet::empty_t())).first);
 
     do {
         unsigned n_state = pending_states.back();
         pending_states.pop_back();
         // Goto for nonterminals
         for (unsigned n = 0; n < grammar_.getNontermCount(); ++n) {
-            PositionSet new_state = calcGoto(states_[n_state], makeNontermId(n));
+            auto new_state = calcGoto(states_[n_state], makeNontermId(n));
             if (!new_state.empty()) {
-                auto [n_new_state, success] = add_state(new_state);
+                auto [n_new_state, success] = add_state(std::move(new_state));
                 if (success) { pending_states.push_back(n_new_state); }
                 goto_tbl[n_state][n] = n_new_state;
             }
@@ -52,9 +52,9 @@ void LRBuilder::buildAnalizer() {
         // Goto for tokens
         for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
             if (grammar_.getTokenInfo(symb).is_used) {
-                PositionSet new_state = calcGoto(states_[n_state], symb);
+                auto new_state = calcGoto(states_[n_state], symb);
                 if (!new_state.empty()) {
-                    auto [n_new_state, success] = add_state(new_state);
+                    auto [n_new_state, success] = add_state(std::move(new_state));
                     if (success) { pending_states.push_back(n_new_state); }
                     action_tbl[n_state][symb] = {Action::Type::kShift, n_new_state};
                 }
@@ -70,16 +70,16 @@ void LRBuilder::buildAnalizer() {
     for (unsigned n_state = 0; n_state < states_.size(); ++n_state) {
         for (const auto& [pos, la_set] : states_[n_state]) {
             // [ B -> gamma . delta, # ]
-            PositionSet closure = calcClosure({{pos, LookAheadSet{kTokenDefault}}});
+            auto closure = calcClosure(makeSinglePositionSet(pos, kTokenDefault));
             for (const auto& [closure_pos, closure_la_set] : closure) {
                 const auto& prod = grammar_.getProductionInfo(closure_pos.n_prod);
-                if (closure_pos.pos > prod.right.size()) {
+                if (closure_pos.pos > prod.rhs.size()) {
                     throw std::runtime_error("invalid position");
-                } else if (closure_pos.pos == prod.right.size()) {
+                } else if (closure_pos.pos == prod.rhs.size()) {
                     continue;
                 }
                 unsigned goto_state = 0;
-                unsigned next_symb = prod.right[closure_pos.pos];
+                unsigned next_symb = prod.rhs[closure_pos.pos];
                 if (isNonterm(next_symb)) {
                     goto_state = goto_tbl[n_state][getIndex(next_symb)];
                 } else if (action_tbl[n_state][next_symb].type == Action::Type::kShift) {
@@ -122,9 +122,9 @@ void LRBuilder::buildAnalizer() {
     for (unsigned n_state = 0; n_state < states_.size(); ++n_state) {
         for (const auto& [pos, la_set] : calcClosure(states_[n_state])) {
             const auto& prod = grammar_.getProductionInfo(pos.n_prod);
-            if (pos.pos > prod.right.size()) {
+            if (pos.pos > prod.rhs.size()) {
                 throw std::runtime_error("invalid position");
-            } else if (pos.pos != prod.right.size()) {  // Not final position
+            } else if (pos.pos != prod.rhs.size()) {  // Not final position
                 continue;
             }
             for (unsigned symb : la_set.la) {
@@ -270,7 +270,7 @@ ValueSet LRBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
         if (!is_empty_included) { break; }
     }
 
-    // If FIRST(production) includes the empty character add `$empty` to FIRST(left)
+    // If FIRST(production) includes the empty character add `$empty` to FIRST(lhs)
     if (is_empty_included) { first.addValue(kTokenEmpty); }
     return first;
 }
@@ -282,21 +282,21 @@ LRBuilder::PositionSet LRBuilder::calcGoto(const PositionSet& s, unsigned symb) 
     // Look through source items
     for (const auto& [pos, la_set] : s) {
         const auto& prod = grammar_.getProductionInfo(pos.n_prod);
-        if (pos.pos > prod.right.size()) {
+        if (pos.pos > prod.rhs.size()) {
             throw std::runtime_error("invalid position");
-        } else if (pos.pos < prod.right.size()) {
-            unsigned next_symb = prod.right[pos.pos];
+        } else if (pos.pos < prod.rhs.size()) {
+            unsigned next_symb = prod.rhs[pos.pos];
             if (isNonterm(next_symb)) { nonkern |= Aeta_tbl_[getIndex(next_symb)]; }
-            if (next_symb == symb) { s_next.emplace(Position{pos.n_prod, pos.pos + 1}, LookAheadSet{}); }
+            if (next_symb == symb) { s_next.emplace(Position{pos.n_prod, pos.pos + 1}, LookAheadSet::empty_t()); }
         }
     }
 
     // Run through nonkernel items
     for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
         const auto& prod = grammar_.getProductionInfo(n_prod);
-        assert(isNonterm(prod.left));
-        if (nonkern.contains(getIndex(prod.left)) && !prod.right.empty() && prod.right[0] == symb) {
-            s_next.emplace(Position{n_prod, 1}, LookAheadSet{});
+        assert(isNonterm(prod.lhs));
+        if (nonkern.contains(getIndex(prod.lhs)) && !prod.rhs.empty() && prod.rhs[0] == symb) {
+            s_next.emplace(Position{n_prod, 1}, LookAheadSet::empty_t());
         }
     }
 
@@ -310,16 +310,16 @@ LRBuilder::PositionSet LRBuilder::calcClosure(const PositionSet& s) {
     // Look through kernel items
     for (const auto& [pos, la_set] : s) {
         const auto& prod = grammar_.getProductionInfo(pos.n_prod);
-        if (pos.pos > prod.right.size()) {
+        if (pos.pos > prod.rhs.size()) {
             throw std::runtime_error("invalid position");
-        } else if (pos.pos == prod.right.size()) {
+        } else if (pos.pos == prod.rhs.size()) {
             continue;
         }
-        unsigned next_symb = prod.right[pos.pos];
+        unsigned next_symb = prod.rhs[pos.pos];
         if (isNonterm(next_symb)) {
             // A -> alpha . B beta
             nonkern.addValue(getIndex(next_symb));
-            ValueSet first = calcFirst(prod.right, pos.pos + 1);  // Calculate FIRST(beta);
+            ValueSet first = calcFirst(prod.rhs, pos.pos + 1);  // Calculate FIRST(beta);
             if (first.contains(kTokenEmpty)) {
                 first.removeValue(kTokenEmpty);
                 first |= la_set.la;
@@ -333,18 +333,18 @@ LRBuilder::PositionSet LRBuilder::calcClosure(const PositionSet& s) {
         change = false;
         // Run through nonkernel items
         for (const auto& prod : grammar_.getProductions()) {
-            assert(isNonterm(prod.left));
-            if (nonkern.contains(getIndex(prod.left)) && !prod.right.empty() && isNonterm(prod.right[0])) {
-                unsigned n_right = getIndex(prod.right[0]);
+            assert(isNonterm(prod.lhs));
+            if (nonkern.contains(getIndex(prod.lhs)) && !prod.rhs.empty() && isNonterm(prod.rhs[0])) {
+                unsigned n_right = getIndex(prod.rhs[0]);
                 // A -> . B beta
                 if (!nonkern.contains(n_right)) {
                     nonkern.addValue(n_right);
                     change = true;
                 }
-                ValueSet first = calcFirst(prod.right, 1);  // Calculate FIRST(beta);
+                ValueSet first = calcFirst(prod.rhs, 1);  // Calculate FIRST(beta);
                 if (first.contains(kTokenEmpty)) {
                     first.removeValue(kTokenEmpty);
-                    first |= nonterm_la[getIndex(prod.left)];
+                    first |= nonterm_la[getIndex(prod.lhs)];
                 }
                 ValueSet old_la = nonterm_la[n_right];
                 nonterm_la[n_right] |= first;
@@ -353,14 +353,14 @@ LRBuilder::PositionSet LRBuilder::calcClosure(const PositionSet& s) {
         }
     } while (change);
 
-    PositionSet closure = s;
+    auto closure = s;
 
     // Add nonkernel items
     for (unsigned n_prod = 0; n_prod < grammar_.getProductionCount(); ++n_prod) {
-        unsigned left = grammar_.getProductionInfo(n_prod).left;
-        assert(isNonterm(left));
-        if (nonkern.contains(getIndex(left))) {  // Is production of nonkernel item
-            closure.emplace(Position{n_prod, 0}, LookAheadSet{nonterm_la[getIndex(left)]});
+        unsigned lhs = grammar_.getProductionInfo(n_prod).lhs;
+        assert(isNonterm(lhs));
+        if (nonkern.contains(getIndex(lhs))) {  // Is production of nonkernel item
+            closure.emplace(Position{n_prod, 0}, nonterm_la[getIndex(lhs)]);
         }
     }
 
@@ -375,10 +375,10 @@ void LRBuilder::buildFirstTable() {
         change = false;
         // Look through all productions
         for (const auto& prod : grammar_.getProductions()) {
-            assert(isNonterm(prod.left));
-            unsigned n_left = getIndex(prod.left);
-            ValueSet first = calcFirst(prod.right);
-            // Append FIRST(left) with FIRST(right)
+            assert(isNonterm(prod.lhs));
+            unsigned n_left = getIndex(prod.lhs);
+            ValueSet first = calcFirst(prod.rhs);
+            // Append FIRST(lhs) with FIRST(rhs)
             ValueSet old = first_tbl_[n_left];
             first_tbl_[n_left] |= first;
             if (first_tbl_[n_left] != old) { change = true; }
@@ -395,12 +395,12 @@ void LRBuilder::buildAetaTable() {
     do {
         change = false;
         for (const auto& prod : grammar_.getProductions()) {
-            assert(isNonterm(prod.left));
-            if (!prod.right.empty()) {
-                if (isNonterm(prod.right[0])) {
-                    unsigned n_right = getIndex(prod.right[0]);
+            assert(isNonterm(prod.lhs));
+            if (!prod.rhs.empty()) {
+                if (isNonterm(prod.rhs[0])) {
+                    unsigned n_right = getIndex(prod.rhs[0]);
                     for (auto& Aeta : Aeta_tbl_) {
-                        if (Aeta.contains(getIndex(prod.left)) && !Aeta.contains(n_right)) {
+                        if (Aeta.contains(getIndex(prod.lhs)) && !Aeta.contains(n_right)) {
                             Aeta.addValue(n_right);
                             change = true;
                         }

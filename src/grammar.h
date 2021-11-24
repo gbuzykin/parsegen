@@ -34,10 +34,13 @@ class Grammar {
     };
 
     struct ProductionInfo {
-        unsigned left = 0;
-        std::vector<unsigned> right;
-        unsigned action = 0;
-        int prec = -1;
+        ProductionInfo(unsigned in_lhs, unsigned in_action) : lhs(in_lhs), action(in_action), prec(-1) {}
+        ProductionInfo(unsigned in_lhs, std::vector<unsigned> in_rhs, unsigned in_action, int in_prec)
+            : lhs(in_lhs), rhs(std::move(in_rhs)), action(in_action), prec(in_prec) {}
+        unsigned lhs;
+        std::vector<unsigned> rhs;
+        unsigned action;
+        int prec;
     };
 
     Grammar();
@@ -45,7 +48,7 @@ class Grammar {
     std::pair<unsigned, bool> addNonterm(std::string name);
     std::pair<unsigned, bool> addAction(std::string name);
     bool setTokenPrecAndAssoc(unsigned id, int prec, Assoc assoc);
-    ProductionInfo& addProduction(unsigned left, std::vector<unsigned> right, int prec);
+    ProductionInfo& addProduction(unsigned lhs, std::vector<unsigned> rhs, int prec);
 
     unsigned getTokenCount() const { return static_cast<unsigned>(tokens_.size()); }
     const TokenInfo& getTokenInfo(unsigned id) const { return tokens_[id]; }

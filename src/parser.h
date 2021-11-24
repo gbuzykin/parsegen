@@ -25,7 +25,7 @@ enum {
     tt_nonassoc,
     tt_prec,
     tt_sep,
-    tt_unterminated_token,
+    tt_unterm_token,
 };
 
 namespace lex_detail {
@@ -53,7 +53,8 @@ class Parser {
     std::unique_ptr<char[]> text_;
     std::string current_line_;
     unsigned n_line_ = 1, n_col_ = 1;
-    lex_detail::CtxData lex_ctx_;
+    char* text_top_ = nullptr;
+    lex_detail::InCtxData lex_ctx_;
     std::vector<int> lex_state_stack_;
     TokenInfo tkn_;
     Grammar& grammar_;

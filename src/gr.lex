@@ -6,7 +6,7 @@ odig    [0-7]
 hdig    [0-9a-fA-F]
 letter  [a-zA-Z]
 id      ({letter}|_)({letter}|{dig}|_)*
-ws      [ \t]+
+ws      [ \f\r\t\v]+
 
 %%
 
@@ -27,9 +27,9 @@ string_close  <string> \"
 symb_other    <symb> [^\n\\']
 symb_close    <symb> \'
 
-whitespace       {ws}
+unterm_token  <string symb> \n
 
-unterminated_token   <string symb> \n | <<EOF>>
+whitespace    {ws}
 
 token       <initial> "%token"
 action      <initial> "%action"

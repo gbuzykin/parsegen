@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <map>
+#include <tuple>
 #include <vector>
 
 // LR table builder class
@@ -47,7 +48,8 @@ class LRBuilder {
     };
 
     struct LookAheadSet {
-        LookAheadSet() = default;
+        struct empty_t {};
+        LookAheadSet(empty_t) {}
         explicit LookAheadSet(unsigned id) { la.addValue(id); }
         explicit LookAheadSet(const ValueSet& in_la) : la(in_la) {}
         ValueSet la;
@@ -55,6 +57,13 @@ class LRBuilder {
     };
 
     using PositionSet = std::map<Position, LookAheadSet>;
+    template<typename... Args>
+    static PositionSet makeSinglePositionSet(const Position& p, Args&&... args) {
+        PositionSet s;
+        s.emplace(std::piecewise_construct, std::forward_as_tuple(p),
+                  std::forward_as_tuple(std::forward<Args>(args)...));
+        return s;
+    }
 
     const Grammar& grammar_;
 

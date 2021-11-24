@@ -133,9 +133,9 @@ int main(int argc, char** argv) {
                 for (const char* l : text) { std::cout << l << std::endl; }
                 return 0;
             } else if (arg[0] != '-') {
-                input_file_name = argv[i];
+                input_file_name = arg;
             } else {
-                logger::fatal() << "unknown flag \'" << arg << "\'";
+                logger::fatal() << "unknown flag `" << arg << "`";
                 return -1;
             }
         }
@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
 
         std::ifstream ifile(input_file_name);
         if (!ifile) {
-            logger::fatal() << "can\'t open input file \'" << input_file_name << "\'";
+            logger::fatal() << "could not open input file `" << input_file_name << "`";
             return -1;
         }
 
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
                 lr_builder.printAetaTable(ofile);
                 lr_builder.printStates(ofile);
             } else {
-                logger::error() << "can\'t open report file \'" << report_file_name << "\'";
+                logger::error() << "could not open report file `" << report_file_name << "`";
             }
         }
 
@@ -207,7 +207,7 @@ int main(int argc, char** argv) {
 
             outputParserDefs(ofile);
         } else {
-            logger::error() << "can\'t open output file \'" << defs_file_name << "\'";
+            logger::error() << "could not open output file `" << defs_file_name << "`";
         }
 
         const auto& action_table = lr_builder.getCompressedActionTable();
@@ -243,18 +243,19 @@ int main(int argc, char** argv) {
             outputArray(ofile, "action_list", action_list.begin(), action_list.end());
 
             std::vector<int> reduce_info;
+            reduce_info.reserve(3 * grammar.getProductionCount());
             for (unsigned n_prod = 0; n_prod < grammar.getProductionCount(); ++n_prod) {
                 const auto& prod = grammar.getProductionInfo(n_prod);
-                reduce_info.push_back(static_cast<int>(prod.right.size()));        // Length
-                reduce_info.push_back(2 * goto_table.index[getIndex(prod.left)]);  // Goto index
-                reduce_info.push_back(prod.action);                                // Action on reduce
+                reduce_info.push_back(static_cast<int>(prod.rhs.size()));         // Length
+                reduce_info.push_back(2 * goto_table.index[getIndex(prod.lhs)]);  // Goto index
+                reduce_info.push_back(prod.action);                               // Action on reduce
             }
 
             outputArray(ofile, "reduce_info", reduce_info.begin(), reduce_info.end());
             outputArray(ofile, "goto_list", goto_list.begin(), goto_list.end());
             outputParserEngine(ofile);
         } else {
-            logger::error() << "can\'t open output file \'" << analyzer_file_name << "\'";
+            logger::error() << "could not open output file `" << analyzer_file_name << "`";
         }
 
         return 0;
