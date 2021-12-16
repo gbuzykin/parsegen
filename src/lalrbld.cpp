@@ -417,7 +417,7 @@ void LRBuilder::buildAetaTable() {
 void LRBuilder::printFirstTable(std::ostream& outp) {
     outp << "---=== FIRST table : ===---" << std::endl << std::endl;
     for (unsigned n = 0; n < first_tbl_.size(); ++n) {
-        outp << "    FIRST(" << grammar_.getName(makeNontermId(n)) << ") = { ";
+        outp << "    FIRST(" << grammar_.getSymbolName(makeNontermId(n)) << ") = { ";
         bool colon = false;
         for (unsigned symb : first_tbl_[n]) {
             if (colon) { outp << ", "; }
@@ -432,11 +432,11 @@ void LRBuilder::printFirstTable(std::ostream& outp) {
 void LRBuilder::printAetaTable(std::ostream& outp) {
     outp << "---=== Aeta table : ===---" << std::endl << std::endl;
     for (unsigned n = 0; n < Aeta_tbl_.size(); ++n) {
-        outp << "    Aeta(" << grammar_.getName(makeNontermId(n)) << ") = { ";
+        outp << "    Aeta(" << grammar_.getSymbolName(makeNontermId(n)) << ") = { ";
         bool colon = false;
         for (unsigned symb : Aeta_tbl_[n]) {
             if (colon) { outp << ", "; }
-            outp << grammar_.getName(makeNontermId(symb));
+            outp << grammar_.getSymbolName(makeNontermId(symb));
             colon = true;
         }
         outp << " }" << std::endl;
@@ -481,7 +481,7 @@ void LRBuilder::printStates(std::ostream& outp) {
         for (unsigned n = 0; n < compr_goto_tbl_.index.size(); ++n) {
             auto it = std::find_if(compr_goto_tbl_.data.begin() + compr_goto_tbl_.index[n], compr_goto_tbl_.data.end(),
                                    [n_state](const auto& item) { return item.first < 0 || item.first == n_state; });
-            outp << "    " << grammar_.getName(makeNontermId(n)) << ", goto state " << it->second << std::endl;
+            outp << "    " << grammar_.getSymbolName(makeNontermId(n)) << ", goto state " << it->second << std::endl;
         }
         outp << std::endl;
     }

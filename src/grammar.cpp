@@ -8,16 +8,16 @@
 Grammar::Grammar() {
     // Initialize predefined tokens
     tokens_.resize(kCharCount + 3);  // Characters and three specials: $empty, $default, $error
-    name_tbl_.insertName("$empty", kTokenEmpty);
-    name_tbl_.insertName("$default", kTokenDefault);
-    name_tbl_.insertName("$error", kTokenError);
+    symbol_tbl_.insertName("$empty", kTokenEmpty);
+    symbol_tbl_.insertName("$default", kTokenDefault);
+    symbol_tbl_.insertName("$error", kTokenError);
     tokens_[kTokenError].is_used = true;
 }
 
 std::pair<unsigned, bool> Grammar::addToken(std::string name) {
     unsigned id = static_cast<unsigned>(tokens_.size());
     if (id > ValueSet::kMaxValue) { throw std::runtime_error("too many tokens"); }
-    auto result = name_tbl_.insertName(std::move(name), id);
+    auto result = symbol_tbl_.insertName(std::move(name), id);
     if (!result.second) { return result; }
     tokens_.emplace_back();
     return result;
@@ -25,7 +25,7 @@ std::pair<unsigned, bool> Grammar::addToken(std::string name) {
 
 std::pair<unsigned, bool> Grammar::addNonterm(std::string name) {
     if (nonterm_count_ > ValueSet::kMaxValue) { throw std::runtime_error("too many nonterminals"); }
-    auto result = name_tbl_.insertName(std::move(name), makeNontermId(nonterm_count_));
+    auto result = symbol_tbl_.insertName(std::move(name), makeNontermId(nonterm_count_));
     if (!result.second) { return result; }
     ++nonterm_count_;
     return result;
@@ -33,7 +33,7 @@ std::pair<unsigned, bool> Grammar::addNonterm(std::string name) {
 
 std::pair<unsigned, bool> Grammar::addAction(std::string name) {
     if (action_count_ > ValueSet::kMaxValue) { throw std::runtime_error("too many actions"); }
-    auto result = name_tbl_.insertName(std::move(name), makeActionId(action_count_));
+    auto result = action_tbl_.insertName(std::move(name), makeActionId(action_count_));
     if (!result.second) { return result; }
     ++action_count_;
     return result;
@@ -96,9 +96,15 @@ bool Grammar::setStartConditionProd(std::string_view name, unsigned n_prod) {
     return true;
 }
 
-std::string_view Grammar::getName(unsigned id) const {
-    auto name = name_tbl_.getName(id);
-    if (name.empty()) { throw std::runtime_error("can't find id"); }
+std::string_view Grammar::getSymbolName(unsigned id) const {
+    auto name = symbol_tbl_.getName(id);
+    if (name.empty()) { throw std::runtime_error("can't find symbol id"); }
+    return name;
+}
+
+std::string_view Grammar::getActionName(unsigned id) const {
+    auto name = action_tbl_.getName(id);
+    if (name.empty()) { throw std::runtime_error("can't find action id"); }
     return name;
 }
 
@@ -106,7 +112,7 @@ std::vector<std::pair<std::string_view, unsigned>> Grammar::getTokenList() {
     std::vector<std::pair<std::string_view, unsigned>> lst;
     lst.reserve(tokens_.size() - kCharCount);
     for (unsigned id = kCharCount; id < static_cast<unsigned>(tokens_.size()); ++id) {
-        std::string_view name = getName(id);
+        std::string_view name = getSymbolName(id);
         if (name[0] != '$') { lst.emplace_back(name, id); }
     }
     return lst;
@@ -115,7 +121,7 @@ std::vector<std::pair<std::string_view, unsigned>> Grammar::getTokenList() {
 std::vector<std::pair<std::string_view, unsigned>> Grammar::getActionList() {
     std::vector<std::pair<std::string_view, unsigned>> lst;
     lst.reserve(action_count_ - 1);
-    for (unsigned n = 1; n < action_count_; ++n) { lst.emplace_back(getName(makeActionId(n)), n); }
+    for (unsigned n = 1; n < action_count_; ++n) { lst.emplace_back(getActionName(makeActionId(n)), n); }
     return lst;
 }
 
@@ -141,7 +147,7 @@ void Grammar::printTokens(std::ostream& outp) const {
 void Grammar::printNonterms(std::ostream& outp) const {
     outp << "---=== Nonterminals : ===---" << std::endl << std::endl;
     for (unsigned id = makeNontermId(0); id < makeNontermId(nonterm_count_); ++id) {
-        outp << "    " << getName(id) << ' ' << id << std::endl;
+        outp << "    " << getSymbolName(id) << ' ' << id << std::endl;
     }
     outp << std::endl;
 }
@@ -149,7 +155,7 @@ void Grammar::printNonterms(std::ostream& outp) const {
 void Grammar::printActions(std::ostream& outp) const {
     outp << "---=== Actions : ===---" << std::endl << std::endl;
     for (unsigned id = makeActionId(1); id < makeActionId(action_count_); ++id) {
-        outp << "    " << getName(id) << ' ' << id << std::endl;
+        outp << "    " << getActionName(id) << ' ' << id << std::endl;
     }
     outp << std::endl;
 }
@@ -168,7 +174,7 @@ void Grammar::printGrammar(std::ostream& outp) const {
 
 void Grammar::printProduction(std::ostream& outp, unsigned n_prod, std::optional<unsigned> pos) const {
     const auto& prod = productions_[n_prod];
-    outp << "    (" << n_prod << ") " << getName(prod.lhs) << " ->";
+    outp << "    (" << n_prod << ") " << getSymbolName(prod.lhs) << " ->";
     if (pos) {
         for (size_t i = 0; i < *pos; ++i) { outp << ' ' << decoratedSymbolText(prod.rhs[i]); }
         outp << " .";
@@ -206,15 +212,12 @@ std::string Grammar::symbolText(unsigned id) const {
         text += '\'';
         return text;
     }
-    return std::string(getName(id));
+    return std::string(getSymbolName(id));
 }
 
 std::string Grammar::decoratedSymbolText(unsigned id) const {
+    if (isAction(id)) { return '{' + std::string(getActionName(id)) + '}'; }
     std::string text(symbolText(id));
-    if (isAction(id)) {
-        text = '{' + text + '}';
-    } else if (isToken(id) && text[0] != '$' && text[0] != '\'') {
-        text = '[' + text + ']';
-    }
+    if (isToken(id) && text[0] != '$' && text[0] != '\'') { text = '[' + text + ']'; }
     return text;
 }

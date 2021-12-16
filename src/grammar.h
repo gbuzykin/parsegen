@@ -57,8 +57,10 @@ class Grammar {
     const std::vector<ProductionInfo>& getProductions() const { return productions_; }
     const std::vector<std::pair<std::string, unsigned>>& getStartConditions() const { return start_conditions_; }
     const ProductionInfo& getProductionInfo(unsigned n_prod) const { return productions_[n_prod]; }
-    std::optional<unsigned> findName(std::string_view name) const { return name_tbl_.findName(name); }
-    std::string_view getName(unsigned id) const;
+    std::optional<unsigned> findSymbolName(std::string_view name) const { return symbol_tbl_.findName(name); }
+    std::string_view getSymbolName(unsigned id) const;
+    std::optional<unsigned> findActionName(std::string_view name) const { return action_tbl_.findName(name); }
+    std::string_view getActionName(unsigned id) const;
     std::vector<std::pair<std::string_view, unsigned>> getTokenList();
     std::vector<std::pair<std::string_view, unsigned>> getActionList();
     const ValueSet& getDefinedNonterms() const { return defined_nonterms_; }
@@ -79,7 +81,8 @@ class Grammar {
     std::vector<std::pair<std::string, unsigned>> start_conditions_;
     ValueSet defined_nonterms_;
     ValueSet used_nonterms_;
-    NameTable name_tbl_;
+    NameTable symbol_tbl_;
+    NameTable action_tbl_;
 
     [[nodiscard]] std::string decoratedSymbolText(unsigned id) const;
 };

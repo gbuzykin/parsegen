@@ -28,7 +28,7 @@ bool Parser::parse() {
     input_.seekg(0);
     input_.read(text_.get(), file_sz);
     lex_ctx_.first = lex_ctx_.next = text_top_ = text_.get();
-    lex_ctx_.last = lex_ctx_.boundary = text_.get() + input_.gcount();
+    lex_ctx_.last = text_.get() + input_.gcount();
     current_line_ = getNextLine(lex_ctx_.next, lex_ctx_.last);
 
     lex_state_stack_.reserve(256);
@@ -59,7 +59,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addToken(std::string(std::get<std::string_view>(tkn_.val))).second) {
-                    logger::error(*this, tkn_.loc) << "name is already used";
+                    logger::error(*this, tkn_.loc) << "token is already defined";
                     return false;
                 }
                 tt = lex();
@@ -70,7 +70,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addAction(std::string(std::get<std::string_view>(tkn_.val))).second) {
-                    logger::error(*this, tkn_.loc) << "name is already used";
+                    logger::error(*this, tkn_.loc) << "action is already defined";
                     return false;
                 }
                 tt = lex();
@@ -128,7 +128,7 @@ bool Parser::parse() {
         if ((tt = lex()) == tt_id) {
             unsigned lhs = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
             if (!isNonterm(lhs)) {
-                logger::error(*this, tkn_.loc) << "name is already used for tokens or actions";
+                logger::error(*this, tkn_.loc) << "name is already used for tokens";
                 return false;
             }
 
@@ -171,7 +171,7 @@ bool Parser::parse() {
                             switch (tt = lex()) {
                                 case tt_token_id:
                                 case tt_internal_id: {
-                                    if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
+                                    if (auto found_id = grammar_.findSymbolName(std::get<std::string_view>(tkn_.val));
                                         found_id && isToken(*found_id)) {
                                         id = *found_id;
                                     } else {
@@ -205,7 +205,7 @@ bool Parser::parse() {
                                 logSyntaxError(tt);
                                 return false;
                             }
-                            if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
+                            if (auto found_id = grammar_.findSymbolName(std::get<std::string_view>(tkn_.val));
                                 found_id && isToken(*found_id)) {
                                 rhs.push_back(*found_id);
                             } else {
@@ -217,7 +217,7 @@ bool Parser::parse() {
                             rhs.push_back(std::get<unsigned>(tkn_.val));
                         } break;
                         case tt_action_id: {  // Action
-                            if (auto found_id = grammar_.findName(std::get<std::string_view>(tkn_.val));
+                            if (auto found_id = grammar_.findActionName(std::get<std::string_view>(tkn_.val));
                                 found_id && isAction(*found_id)) {
                                 rhs.push_back(*found_id);
                             } else {
@@ -273,11 +273,11 @@ bool Parser::parse() {
         if (!std::any_of(start_conditions.begin(), start_conditions.end(), [&grammar = grammar_, n](const auto& sc) {
                 return grammar.getProductionInfo(sc.second).lhs == makeNontermId(n);
             })) {
-            logger::warning(file_name_) << "unused nonterminal `" << grammar_.getName(makeNontermId(n)) << "`";
+            logger::warning(file_name_) << "unused nonterminal `" << grammar_.getSymbolName(makeNontermId(n)) << "`";
         }
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
-        logger::error(file_name_) << "undefined nonterminal `" << grammar_.getName(makeNontermId(*undef.begin()))
+        logger::error(file_name_) << "undefined nonterminal `" << grammar_.getSymbolName(makeNontermId(*undef.begin()))
                                   << "`";
         return false;
     }
