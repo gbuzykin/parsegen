@@ -6,7 +6,7 @@ odig    [0-7]
 hdig    [0-9a-fA-F]
 letter  [a-zA-Z]
 id      ({letter}|_)({letter}|{dig}|_)*
-ws      [ \f\r\t\v]+
+ws      [ \f\r\t\v]
 
 %%
 
@@ -21,16 +21,17 @@ escape_t      <string symb> \\t
 escape_v      <string symb> \\v
 escape_other  <string symb> \\.
 
-string_seq    <string> [^\n\\"]+
+string_seq    <string> [^"\\\n]+
 string_close  <string> \"
 
-symb_other    <symb> [^\n\\']
+symb_other    <symb> [^'\\\n]
 symb_close    <symb> \'
 
 unterm_token  <string symb> \n
 
-whitespace    {ws}
+whitespace    {ws}+
 
+start       <initial> "%start"
 token       <initial> "%token"
 action      <initial> "%action"
 option      <initial> "%option"
@@ -41,16 +42,14 @@ prec        <initial> "%prec"
 sep         <initial> "%%"
 token_id    <initial> \[{id}\]
 action_id   <initial> \{{id}\}
-predef_id   <initial> "$end"|"$empty"|"$default"|"$error"|"$accept"
+predef_id   <initial> "$empty"|"$default"|"$error"
 internal_id <initial> $({letter}|{dig}|_)+
+id          <initial> {id}
+comment     <initial> #
 
-id        <initial> {id}
-comment   <initial> #
-
-string     \"
-symb       \'
-other      .
 nl         \n
-eof        <<EOF>>
+symb       \'
+string     \"
+other      .
 
 %%

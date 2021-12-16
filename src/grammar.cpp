@@ -8,19 +8,10 @@
 Grammar::Grammar() {
     // Initialize predefined tokens
     tokens_.resize(kCharCount + 3);  // Characters and three specials: $empty, $default, $error
-    name_tbl_.insertName("$end", kTokenEnd);
     name_tbl_.insertName("$empty", kTokenEmpty);
     name_tbl_.insertName("$default", kTokenDefault);
     name_tbl_.insertName("$error", kTokenError);
-    tokens_[kTokenEnd].is_used = true;
     tokens_[kTokenError].is_used = true;
-
-    // Add predefined $accept nonterminal
-    name_tbl_.insertName("$accept", kNontermAccept);
-    used_nonterms_.addValue(getIndex(kNontermAccept));
-
-    // Add augmenting production
-    addProduction(kNontermAccept, {kNontermAccept + 1, kTokenEnd}, -1);
 }
 
 std::pair<unsigned, bool> Grammar::addToken(std::string name) {
@@ -87,6 +78,22 @@ Grammar::ProductionInfo& Grammar::addProduction(unsigned lhs, std::vector<unsign
         }
     }
     return productions_.emplace_back(lhs, std::move(rhs), final_action, prec);
+}
+
+bool Grammar::addStartCondition(std::string name) {
+    auto it = std::find_if(start_conditions_.begin(), start_conditions_.end(),
+                           [&name](const auto& sc) { return sc.first == name; });
+    if (it != start_conditions_.end()) { return false; }
+    start_conditions_.emplace_back(std::move(name), 0);
+    return true;
+}
+
+bool Grammar::setStartConditionProd(std::string_view name, unsigned n_prod) {
+    auto it = std::find_if(start_conditions_.begin(), start_conditions_.end(),
+                           [&name](const auto& sc) { return sc.first == name; });
+    if (it == start_conditions_.end()) { return false; }
+    it->second = n_prod;
+    return true;
 }
 
 std::string_view Grammar::getName(unsigned id) const {
@@ -172,9 +179,10 @@ void Grammar::printProduction(std::ostream& outp, unsigned n_prod, std::optional
 }
 
 std::string Grammar::symbolText(unsigned id) const {
-    if (id > kTokenEnd && id < kCharCount) {
+    if (id < kCharCount) {
         std::string text("\'");
         switch (id) {
+            case '\0': text += "\\0"; break;
             case '\n': text += "\\n"; break;
             case '\t': text += "\\t"; break;
             case '\v': text += "\\v"; break;

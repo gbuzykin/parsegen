@@ -34,11 +34,25 @@ bool Parser::parse() {
     lex_state_stack_.reserve(256);
     lex_state_stack_.push_back(lex_detail::sc_initial);
 
+    // Add default start condition
+    grammar_.addStartCondition("initial");
+
     // Load definitions
     int prec = 0;
     int tt = lex();
     do {
         switch (tt) {
+            case tt_start: {  // Start condition definition
+                if ((tt = lex()) != tt_id) {
+                    logSyntaxError(tt);
+                    return false;
+                }
+                if (!grammar_.addStartCondition(std::string(std::get<std::string_view>(tkn_.val)))) {
+                    logger::error(*this, tkn_.loc) << "start condition is already defined";
+                    return false;
+                }
+                tt = lex();
+            } break;
             case tt_token: {  // Token definition
                 if ((tt = lex()) != tt_id) {
                     logSyntaxError(tt);
@@ -118,7 +132,29 @@ bool Parser::parse() {
                 return false;
             }
 
-            if (lex() != ':') {
+            bool has_start_condition = false;
+            if ((tt = lex()) == '<') {
+                has_start_condition = true;
+                if ((tt = lex()) != tt_id) {
+                    logSyntaxError(tt);
+                    return false;
+                }
+
+                if (!grammar_.setStartConditionProd(std::get<std::string_view>(tkn_.val),
+                                                    grammar_.getProductionCount())) {
+                    logger::error(*this, tkn_.loc) << "undefined start condition";
+                    return false;
+                }
+
+                if ((tt = lex()) != '>') {
+                    logSyntaxError(tt);
+                    return false;
+                }
+
+                tt = lex();
+            }
+
+            if (tt != ':') {
                 logSyntaxError(tt);
                 return false;
             }
@@ -191,6 +227,14 @@ bool Parser::parse() {
                         } break;
                         case '|':
                         case ';': {
+                            if (has_start_condition) {
+                                has_start_condition = false;
+                                if (rhs.empty() || !isToken(rhs.back())) {
+                                    logger::error(*this, tkn_.loc)
+                                        << "start production must be terminated with a token";
+                                    return false;
+                                }
+                            }
                             grammar_.addProduction(lhs, std::move(rhs), prec);
                         } break;
                         default: logSyntaxError(tt); return false;
@@ -203,7 +247,7 @@ bool Parser::parse() {
         }
     } while (tt != tt_sep);
 
-    if (grammar_.getProductionCount() == 1) {  // Only augmenting production
+    if (!grammar_.getProductionCount()) {
         logger::error(file_name_) << "no productions defined";
         return false;
     }
@@ -211,13 +255,30 @@ bool Parser::parse() {
     // Check grammar
     const auto& nonterm_used = grammar_.getUsedNonterms();
     const auto& nonterm_defined = grammar_.getDefinedNonterms();
+    const auto& start_conditions = grammar_.getStartConditions();
+    for (const auto& sc : start_conditions) {
+        const auto& prod = grammar_.getProductionInfo(sc.second);
+        if (prod.rhs.empty() || !isToken(prod.rhs.back())) {
+            logger::error(file_name_) << "implicit start production for `" << sc.first
+                                      << "` start condition must be terminated with a token";
+            return false;
+        }
+        if (nonterm_used.contains(getIndex(prod.lhs))) {
+            logger::error(file_name_) << "left part of start production must not be used in other productions";
+            return false;
+        }
+    }
+
     for (unsigned n : nonterm_defined - nonterm_used) {
-        logger::warning(file_name_) << "unused nonterminal `" << grammar_.getName(makeNontermId(n)) << "`";
+        if (!std::any_of(start_conditions.begin(), start_conditions.end(), [&grammar = grammar_, n](const auto& sc) {
+                return grammar.getProductionInfo(sc.second).lhs == makeNontermId(n);
+            })) {
+            logger::warning(file_name_) << "unused nonterminal `" << grammar_.getName(makeNontermId(n)) << "`";
+        }
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
-        for (unsigned n : undef) {
-            logger::error(file_name_) << "undefined nonterminal `" << grammar_.getName(makeNontermId(n)) << "`";
-        }
+        logger::error(file_name_) << "undefined nonterminal `" << grammar_.getName(makeNontermId(*undef.begin()))
+                                  << "`";
         return false;
     }
     return true;
@@ -325,7 +386,8 @@ int Parser::lex() {
                 lex_ctx_.next = findEol(lex_ctx_.next, lex_ctx_.last);
             } break;
 
-                // ------ other
+            // ------ other
+            case lex_detail::pat_start: return tt_start;
             case lex_detail::pat_token: return tt_token;
             case lex_detail::pat_action: return tt_action;
             case lex_detail::pat_option: return tt_option;

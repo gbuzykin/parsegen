@@ -34,8 +34,11 @@ void LRBuilder::buildAnalizer() {
         return std::make_pair(static_cast<unsigned>(states.size()) - 1, true);
     };
 
-    // Add initial state
-    pending_states.push_back(add_state(makeSinglePositionSet(Position{0, 0}, LookAheadSet::empty_t())).first);
+    // Add initial states
+    for (const auto& sc : grammar_.getStartConditions()) {
+        pending_states.push_back(
+            add_state(makeSinglePositionSet(Position{sc.second, 0}, LookAheadSet::empty_t())).first);
+    }
 
     do {
         unsigned n_state = pending_states.back();

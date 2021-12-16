@@ -8,12 +8,10 @@
 #include <vector>
 
 enum {
-    kTokenEnd = 0,
     kCharCount = 0x100,
     kTokenEmpty = kCharCount,
     kTokenDefault,
     kTokenError,
-    kNontermAccept = 0x1000,
 };
 
 enum class Assoc { kNone = 0, kLeft, kRight };
@@ -49,12 +47,15 @@ class Grammar {
     std::pair<unsigned, bool> addAction(std::string name);
     bool setTokenPrecAndAssoc(unsigned id, int prec, Assoc assoc);
     ProductionInfo& addProduction(unsigned lhs, std::vector<unsigned> rhs, int prec);
+    bool addStartCondition(std::string name);
+    bool setStartConditionProd(std::string_view name, unsigned n_prod);
 
     unsigned getTokenCount() const { return static_cast<unsigned>(tokens_.size()); }
     const TokenInfo& getTokenInfo(unsigned id) const { return tokens_[id]; }
     unsigned getNontermCount() const { return nonterm_count_; }
     unsigned getProductionCount() const { return static_cast<unsigned>(productions_.size()); }
     const std::vector<ProductionInfo>& getProductions() const { return productions_; }
+    const std::vector<std::pair<std::string, unsigned>>& getStartConditions() const { return start_conditions_; }
     const ProductionInfo& getProductionInfo(unsigned n_prod) const { return productions_[n_prod]; }
     std::optional<unsigned> findName(std::string_view name) const { return name_tbl_.findName(name); }
     std::string_view getName(unsigned id) const;
@@ -71,10 +72,11 @@ class Grammar {
     [[nodiscard]] std::string symbolText(unsigned id) const;
 
  private:
-    unsigned nonterm_count_ = 1;
+    unsigned nonterm_count_ = 0;
     unsigned action_count_ = 1;
     std::vector<TokenInfo> tokens_;
     std::vector<ProductionInfo> productions_;
+    std::vector<std::pair<std::string, unsigned>> start_conditions_;
     ValueSet defined_nonterms_;
     ValueSet used_nonterms_;
     NameTable name_tbl_;

@@ -9,14 +9,15 @@
 #include <vector>
 
 enum {
-    tt_eof = 0,
-    tt_symb = 256,
+    tt_eof = 256,
+    tt_symb,
     tt_id,
     tt_predef_id,
     tt_internal_id,
     tt_token_id,
     tt_action_id,
     tt_string,
+    tt_start,
     tt_token,
     tt_action,
     tt_option,

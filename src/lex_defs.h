@@ -19,6 +19,7 @@ enum {
     pat_symb_close,
     pat_unterm_token,
     pat_whitespace,
+    pat_start,
     pat_token,
     pat_action,
     pat_option,
@@ -33,11 +34,10 @@ enum {
     pat_internal_id,
     pat_id,
     pat_comment,
-    pat_string,
-    pat_symb,
-    pat_other,
     pat_nl,
-    pat_eof,
+    pat_symb,
+    pat_string,
+    pat_other,
 };
 
 enum {
