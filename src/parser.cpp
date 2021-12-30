@@ -48,7 +48,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addStartCondition(std::string(std::get<std::string_view>(tkn_.val)))) {
-                    logger::error(*this, tkn_.loc) << "start condition is already defined";
+                    logger::error(*this, tkn_.loc).format("start condition is already defined");
                     return false;
                 }
                 tt = lex();
@@ -59,7 +59,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addToken(std::string(std::get<std::string_view>(tkn_.val))).second) {
-                    logger::error(*this, tkn_.loc) << "token is already defined";
+                    logger::error(*this, tkn_.loc).format("token is already defined");
                     return false;
                 }
                 tt = lex();
@@ -70,7 +70,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addAction(std::string(std::get<std::string_view>(tkn_.val))).second) {
-                    logger::error(*this, tkn_.loc) << "action is already defined";
+                    logger::error(*this, tkn_.loc).format("action is already defined");
                     return false;
                 }
                 tt = lex();
@@ -98,7 +98,7 @@ bool Parser::parse() {
                     if (id == 0) { break; }
 
                     if (!grammar_.setTokenPrecAndAssoc(id, prec, assoc)) {
-                        logger::error(*this, tkn_.loc) << "token precedence is already defined";
+                        logger::error(*this, tkn_.loc).format("token precedence is already defined");
                         return false;
                     }
                 }
@@ -128,7 +128,7 @@ bool Parser::parse() {
         if ((tt = lex()) == tt_id) {
             unsigned lhs = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
             if (!isNonterm(lhs)) {
-                logger::error(*this, tkn_.loc) << "name is already used for tokens";
+                logger::error(*this, tkn_.loc).format("name is already used for tokens");
                 return false;
             }
 
@@ -142,7 +142,7 @@ bool Parser::parse() {
 
                 if (!grammar_.setStartConditionProd(std::get<std::string_view>(tkn_.val),
                                                     grammar_.getProductionCount())) {
-                    logger::error(*this, tkn_.loc) << "undefined start condition";
+                    logger::error(*this, tkn_.loc).format("undefined start condition");
                     return false;
                 }
 
@@ -175,7 +175,7 @@ bool Parser::parse() {
                                         found_id && isToken(*found_id)) {
                                         id = *found_id;
                                     } else {
-                                        logger::error(*this, tkn_.loc) << "undefined token";
+                                        logger::error(*this, tkn_.loc).format("undefined token");
                                         return false;
                                     }
                                 } break;
@@ -187,14 +187,14 @@ bool Parser::parse() {
 
                             prec = grammar_.getTokenInfo(id).prec;
                             if (prec < 0) {
-                                logger::error(*this, tkn_.loc) << "token precedence is not defined";
+                                logger::error(*this, tkn_.loc).format("token precedence is not defined");
                                 return false;
                             }
                         } break;
                         case tt_id: {  // Nonterminal
                             auto id = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
                             if (!isNonterm(id)) {
-                                logger::error(*this, tkn_.loc) << "name is already used for tokens or actions";
+                                logger::error(*this, tkn_.loc).format("name is already used for tokens or actions");
                                 return false;
                             }
                             rhs.push_back(id);
@@ -209,7 +209,7 @@ bool Parser::parse() {
                                 found_id && isToken(*found_id)) {
                                 rhs.push_back(*found_id);
                             } else {
-                                logger::error(*this, tkn_.loc) << "undefined token";
+                                logger::error(*this, tkn_.loc).format("undefined token");
                                 return false;
                             }
                         } break;
@@ -221,7 +221,7 @@ bool Parser::parse() {
                                 found_id && isAction(*found_id)) {
                                 rhs.push_back(*found_id);
                             } else {
-                                logger::error(*this, tkn_.loc) << "undefined action";
+                                logger::error(*this, tkn_.loc).format("undefined action");
                                 return false;
                             }
                         } break;
@@ -231,7 +231,7 @@ bool Parser::parse() {
                                 has_start_condition = false;
                                 if (rhs.empty() || !isToken(rhs.back())) {
                                     logger::error(*this, tkn_.loc)
-                                        << "start production must be terminated with a token";
+                                        .format("start production must be terminated with a token");
                                     return false;
                                 }
                             }
@@ -248,7 +248,7 @@ bool Parser::parse() {
     } while (tt != tt_sep);
 
     if (!grammar_.getProductionCount()) {
-        logger::error(file_name_) << "no productions defined";
+        logger::error(file_name_).format("no productions defined");
         return false;
     }
 
@@ -259,12 +259,12 @@ bool Parser::parse() {
     for (const auto& sc : start_conditions) {
         const auto& prod = grammar_.getProductionInfo(sc.second);
         if (prod.rhs.empty() || !isToken(prod.rhs.back())) {
-            logger::error(file_name_) << "implicit start production for `" << sc.first
-                                      << "` start condition must be terminated with a token";
+            logger::error(file_name_)
+                .format("implicit start production for `{}` start condition must be terminated with a token", sc.first);
             return false;
         }
         if (nonterm_used.contains(getIndex(prod.lhs))) {
-            logger::error(file_name_) << "left part of start production must not be used in other productions";
+            logger::error(file_name_).format("left part of start production must not be used in other productions");
             return false;
         }
     }
@@ -273,12 +273,12 @@ bool Parser::parse() {
         if (!std::any_of(start_conditions.begin(), start_conditions.end(), [&grammar = grammar_, n](const auto& sc) {
                 return grammar.getProductionInfo(sc.second).lhs == makeNontermId(n);
             })) {
-            logger::warning(file_name_) << "unused nonterminal `" << grammar_.getSymbolName(makeNontermId(n)) << "`";
+            logger::warning(file_name_).format("unused nonterminal `{}`", grammar_.getSymbolName(makeNontermId(n)));
         }
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
-        logger::error(file_name_) << "undefined nonterminal `" << grammar_.getSymbolName(makeNontermId(*undef.begin()))
-                                  << "`";
+        logger::error(file_name_)
+            .format("undefined nonterminal `{}`", grammar_.getSymbolName(makeNontermId(*undef.begin())));
         return false;
     }
     return true;
@@ -422,5 +422,5 @@ void Parser::logSyntaxError(int tt) const {
         case tt_unterm_token: msg = "unterminated token"; break;
         default: msg = "unexpected token"; break;
     }
-    logger::error(*this, tkn_.loc) << msg;
+    logger::error(*this, tkn_.loc).format(msg);
 }

@@ -1,6 +1,7 @@
 #include "logger.h"
 
 #include "parser.h"
+#include "util/utf8.h"
 
 #include <iostream>
 

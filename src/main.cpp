@@ -135,19 +135,19 @@ int main(int argc, char** argv) {
             } else if (arg[0] != '-') {
                 input_file_name = arg;
             } else {
-                logger::fatal() << "unknown flag `" << arg << "`";
+                logger::fatal().format("unknown flag `{}`", arg);
                 return -1;
             }
         }
 
         if (input_file_name.empty()) {
-            logger::fatal() << "no input file specified";
+            logger::fatal().format("no input file specified");
             return -1;
         }
 
         std::ifstream ifile(input_file_name);
         if (!ifile) {
-            logger::fatal() << "could not open input file `" << input_file_name << "`";
+            logger::fatal().format("could not open input file `{}`", input_file_name);
             return -1;
         }
 
@@ -159,10 +159,10 @@ int main(int argc, char** argv) {
         lr_builder.buildAnalizer();
 
         if (unsigned sr_count = lr_builder.getSRConflictCount(); sr_count > 0) {
-            logger::warning(input_file_name) << sr_count << " shift/reduce conflict(s) found";
+            logger::warning(input_file_name).format("{} shift/reduce conflict(s) found", sr_count);
         }
         if (unsigned rr_count = lr_builder.getRRConflictCount(); rr_count > 0) {
-            logger::warning(input_file_name) << rr_count << " shift/reduce conflict(s) found";
+            logger::warning(input_file_name).format("{} reduce/reduce conflict(s) found", rr_count);
         }
 
         if (!report_file_name.empty()) {
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
                 lr_builder.printAetaTable(ofile);
                 lr_builder.printStates(ofile);
             } else {
-                logger::error() << "could not open report file `" << report_file_name << "`";
+                logger::error().format("could not open report file `{}`", report_file_name);
             }
         }
 
@@ -215,7 +215,7 @@ int main(int argc, char** argv) {
 
             outputParserDefs(ofile);
         } else {
-            logger::error() << "could not open output file `" << defs_file_name << "`";
+            logger::error().format("could not open output file `{}`", defs_file_name);
         }
 
         const auto& action_table = lr_builder.getCompressedActionTable();
@@ -263,10 +263,10 @@ int main(int argc, char** argv) {
             outputArray(ofile, "goto_list", goto_list.begin(), goto_list.end());
             outputParserEngine(ofile);
         } else {
-            logger::error() << "could not open output file `" << analyzer_file_name << "`";
+            logger::error().format("could not open output file `{}`", analyzer_file_name);
         }
 
         return 0;
-    } catch (const std::exception& e) { logger::fatal() << "exception catched: " << e.what(); }
+    } catch (const std::exception& e) { logger::fatal().format("exception catched: {}", e.what()); }
     return -1;
 }

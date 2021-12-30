@@ -1,28 +1,6 @@
 #pragma once
 
-#include <sstream>
-#include <string>
-
-namespace util {
-template<typename InputIt>
-InputIt from_utf8(InputIt in, InputIt in_end, uint32_t* pcode) {
-    if (in >= in_end) { return in; }
-    uint32_t code = static_cast<uint8_t>(*in);
-    if ((code & 0xC0) == 0xC0) {
-        constexpr uint32_t mask_tbl[] = {0xFF, 0x1F, 0xF, 0x7};
-        constexpr const uint32_t count_tbl[] = {1, 1, 1, 1, 2, 2, 3, 0};
-        uint32_t count = count_tbl[(code >> 3) & 7];  // continuation byte count
-        if (in_end - in <= count) { return in; }
-        code &= mask_tbl[count];
-        while (count > 0) {
-            code = (code << 6) | ((*++in) & 0x3F);
-            --count;
-        }
-    }
-    *pcode = code;
-    return ++in;
-}
-}  // namespace util
+#include "util/format.h"
 
 struct TokenLoc {
     unsigned ln = 0;
@@ -43,24 +21,24 @@ class Logger {
     Logger& operator=(const Logger&) = delete;
 
     MsgType getType() const { return type_; }
-    std::string getString() const { return ss_.str(); }
+    const std::string& getMessage() const { return msg_; }
 
-    template<typename Ty>
-    LoggerTy& operator<<(const Ty& v) {
-        ss_ << v;
+    template<typename... Ts>
+    LoggerTy& format(std::string_view fmt, Ts&&... args) {
+        msg_ = util::format(fmt, std::forward<Ts>(args)...);
         return static_cast<LoggerTy&>(*this);
     }
 
  private:
     MsgType type_ = MsgType::kDebug;
-    std::stringstream ss_;
+    std::string msg_;
 };
 
 class LoggerSimple : public Logger<LoggerSimple> {
  public:
     explicit LoggerSimple(MsgType type) : Logger<LoggerSimple>(type), header_("parsegen") {}
     LoggerSimple(MsgType type, std::string_view hdr) : Logger<LoggerSimple>(type), header_(hdr) {}
-    ~LoggerSimple() { printMessage(getString()); }
+    ~LoggerSimple() { printMessage(getMessage()); }
     void printMessage(std::string_view msg);
 
  private:
@@ -71,7 +49,7 @@ class LoggerExtended : public Logger<LoggerExtended> {
  public:
     LoggerExtended(MsgType type, const Parser& parser, const TokenLoc& l)
         : Logger<LoggerExtended>(type), parser_(parser), loc_(l) {}
-    ~LoggerExtended() { printMessage(getString()); }
+    ~LoggerExtended() { printMessage(getMessage()); }
     void printMessage(std::string_view msg);
 
  private:
