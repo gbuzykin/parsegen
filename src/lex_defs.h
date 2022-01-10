@@ -38,6 +38,7 @@ enum {
     pat_symb,
     pat_string,
     pat_other,
+    total_pattern_count,
 };
 
 enum {
@@ -46,9 +47,4 @@ enum {
     sc_symb,
 };
 
-struct InCtxData {
-    const char* first = nullptr;
-    const char* next = nullptr;
-    const char* last = nullptr;
-    bool has_more = false;
-};
+int lex(const char* first, const char* last, std::vector<int>& state_stack, unsigned& llen, bool has_more);

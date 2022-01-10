@@ -70,17 +70,18 @@ static int lls_idx[99] = {
 
 static int lls_list[1] = { 0 };
 
-int lex(InCtxData& in_ctx, std::vector<int>& state_stack) {
+int lex(const char* first, const char* last, std::vector<int>& state_stack, unsigned& llen, bool has_more) {
+    assert(first <= last && last - first >= llen);
     enum { kTrailContFlag = 1, kFlagCount = 1 };
-    char symb = '\0';
     int state = state_stack.back();
+    const char* p = first + llen;
     while (true) {  // Fill buffers till transition is impossible
-        if (in_ctx.next == in_ctx.last) {
-            if (!in_ctx.has_more) { break; }
+        if (p == last) {
+            if (!has_more) { break; }
+            llen = p - first;
             return err_end_of_input;
         }
-        symb = *in_ctx.next;
-        int meta = symb2meta[static_cast<unsigned char>(symb)];
+        int meta = symb2meta[static_cast<unsigned char>(*p)];
         if (meta < 0) { break; }
         do {
             int l = base[state] + meta;
@@ -91,10 +92,10 @@ int lex(InCtxData& in_ctx, std::vector<int>& state_stack) {
             state = def[state];
         } while (state >= 0);
         if (state < 0) { break; }
-        ++in_ctx.next;
         state_stack.push_back(state);
+        ++p;
     }
-    while (in_ctx.next != in_ctx.first) {  // Unroll downto last accepting state
+    while (p != first) {  // Unroll downto last accepting state
         int n_pat = accept[state_stack.back()];
         if (n_pat > 0) {
             bool has_trailling_context = n_pat & kTrailContFlag;
@@ -103,24 +104,21 @@ int lex(InCtxData& in_ctx, std::vector<int>& state_stack) {
                 do {
                     state = state_stack.back();
                     for (int i = lls_idx[state]; i < lls_idx[state + 1]; ++i) {
-                        if (lls_list[i] == n_pat) {
-                            ptrdiff_t n_remove = in_ctx.next - in_ctx.first;
-                            state_stack.erase(state_stack.end() - n_remove, state_stack.end());
-                            return n_pat;
-                        }
+                        if (lls_list[i] == n_pat) { goto accept_pat; }
                     }
-                    --in_ctx.next;
+                    --p;
                     state_stack.pop_back();
-                } while (in_ctx.next != in_ctx.first);
+                } while (p != first);
             }
-            ptrdiff_t n_remove = in_ctx.next - in_ctx.first;
-            state_stack.erase(state_stack.end() - n_remove, state_stack.end());
+        accept_pat:
+            llen = p - first;
+            state_stack.erase(state_stack.end() - llen, state_stack.end());
             return n_pat;
         }
-        --in_ctx.next;
+        --p;
         state_stack.pop_back();
     }
-    if (in_ctx.next == in_ctx.last) { return err_end_of_input; }
-    ++in_ctx.next;  // Accept at least one symbol as default pattern
+    if (p == last) { return err_end_of_input; }
+    ++p, llen = 1;  // Accept at least one symbol as default pattern
     return predef_pat_default;
 }
