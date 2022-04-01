@@ -78,7 +78,7 @@ int lex(const char* first, const char* last, std::vector<int>& state_stack, unsi
     while (true) {  // Fill buffers till transition is impossible
         if (p == last) {
             if (!has_more) { break; }
-            llen = p - first;
+            llen = static_cast<unsigned>(p - first);
             return err_end_of_input;
         }
         int meta = symb2meta[static_cast<unsigned char>(*p)];
@@ -111,7 +111,7 @@ int lex(const char* first, const char* last, std::vector<int>& state_stack, unsi
                 } while (p != first);
             }
         accept_pat:
-            llen = p - first;
+            llen = static_cast<unsigned>(p - first);
             state_stack.erase(state_stack.end() - llen, state_stack.end());
             return n_pat;
         }

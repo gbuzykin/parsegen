@@ -3,7 +3,6 @@
 #include "grammar.h"
 #include "valset.h"
 
-#include <iostream>
 #include <map>
 #include <tuple>
 #include <vector>
@@ -32,9 +31,9 @@ class LRBuilder {
     unsigned getRRConflictCount() const { return rr_conflict_count_; }
     const CompressedTable<Action>& getCompressedActionTable() { return compr_action_tbl_; }
     const CompressedTable<unsigned>& getCompressedGotoTable() { return compr_goto_tbl_; }
-    void printFirstTable(std::ostream& outp);
-    void printAetaTable(std::ostream& outp);
-    void printStates(std::ostream& outp);
+    void printFirstTable(util::iobuf& outp);
+    void printAetaTable(util::iobuf& outp);
+    void printStates(util::iobuf& outp);
 
  protected:
     struct Position {

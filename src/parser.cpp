@@ -1,8 +1,7 @@
 #include "parser.h"
 
+#include "util/algorithm.h"
 #include "valset.h"
-
-#include <algorithm>
 
 namespace lex_detail {
 #include "lex_analyzer.inl"
@@ -17,18 +16,20 @@ std::string_view getNextLine(const char* text, const char* boundary) {
 }
 }  // namespace
 
-Parser::Parser(std::istream& input, std::string file_name, Grammar& grammar)
+Parser::Parser(util::iobuf& input, std::string file_name, Grammar& grammar)
     : input_(input), file_name_(std::move(file_name)), grammar_(grammar) {}
 
 bool Parser::parse() {
-    size_t file_sz = static_cast<size_t>(input_.seekg(0, std::ios_base::end).tellg());
+    std::streampos pos = input_.seek(0, util::seekdir::kEnd);
+    if (pos < 0) { return false; }
+    size_t file_sz = static_cast<size_t>(pos);
     text_ = std::make_unique<char[]>(file_sz);
 
     // Read the whole file
-    input_.seekg(0);
-    input_.read(text_.get(), file_sz);
+    input_.seek(0);
+    size_t n_read = input_.read(util::as_span(text_.get(), file_sz));
     in_ctx_.first = text_top_ = text_.get();
-    in_ctx_.last = text_.get() + input_.gcount();
+    in_ctx_.last = text_.get() + n_read;
     current_line_ = getNextLine(in_ctx_.first, in_ctx_.last);
 
     lex_state_stack_.reserve(256);
@@ -270,7 +271,7 @@ bool Parser::parse() {
     }
 
     for (unsigned n : nonterm_defined - nonterm_used) {
-        if (!std::any_of(start_conditions.begin(), start_conditions.end(), [&grammar = grammar_, n](const auto& sc) {
+        if (!util::any_of(start_conditions, [&grammar = grammar_, n](const auto& sc) {
                 return grammar.getProductionInfo(sc.second).lhs == makeNontermId(n);
             })) {
             logger::warning(file_name_).format("unused nonterminal `{}`", grammar_.getSymbolName(makeNontermId(n)));
@@ -323,13 +324,13 @@ int Parser::lex() {
             case lex_detail::pat_escape_v: escape = '\v'; break;
             case lex_detail::pat_escape_other: escape = lexeme[1]; break;
             case lex_detail::pat_escape_hex: {
-                escape = hdig(lexeme[2]);
-                if (llen > 3) { *escape = (*escape << 4) + hdig(lexeme[3]); }
+                escape = util::dig_v<16>(lexeme[2]);
+                if (llen > 3) { *escape = (*escape << 4) + util::dig_v<16>(lexeme[3]); }
             } break;
             case lex_detail::pat_escape_oct: {
-                escape = dig(lexeme[1]);
-                if (llen > 2) { *escape = (*escape << 3) + dig(lexeme[2]); }
-                if (llen > 3) { *escape = (*escape << 3) + dig(lexeme[3]); }
+                escape = util::dig_v<8>(lexeme[1]);
+                if (llen > 2) { *escape = (*escape << 3) + util::dig_v<8>(lexeme[2]); }
+                if (llen > 3) { *escape = (*escape << 3) + util::dig_v<8>(lexeme[3]); }
             } break;
 
             // ------ strings
