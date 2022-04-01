@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nametbl.h"
+#include "util/io/iobuf.h"
 #include "valset.h"
 
 #include <memory>
@@ -66,11 +67,11 @@ class Grammar {
     const ValueSet& getDefinedNonterms() const { return defined_nonterms_; }
     const ValueSet& getUsedNonterms() const { return used_nonterms_; }
 
-    void printTokens(std::ostream& outp) const;
-    void printNonterms(std::ostream& outp) const;
-    void printActions(std::ostream& outp) const;
-    void printGrammar(std::ostream& outp) const;
-    void printProduction(std::ostream& outp, unsigned n_prod, std::optional<unsigned> pos) const;
+    void printTokens(util::iobuf& outp) const;
+    void printNonterms(util::iobuf& outp) const;
+    void printActions(util::iobuf& outp) const;
+    void printGrammar(util::iobuf& outp) const;
+    void printProduction(util::iobuf& outp, unsigned n_prod, std::optional<unsigned> pos) const;
     [[nodiscard]] std::string symbolText(unsigned id) const;
 
  private:

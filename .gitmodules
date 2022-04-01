@@ -1,0 +1,3 @@
+[submodule "std-ext"]
+	path = std-ext
+	url = git@github.com:gbuzykin/std-ext

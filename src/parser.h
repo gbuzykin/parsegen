@@ -3,7 +3,6 @@
 #include "grammar.h"
 #include "logger.h"
 
-#include <iostream>
 #include <unordered_map>
 #include <variant>
 #include <vector>
@@ -36,7 +35,7 @@ namespace lex_detail {
 // Input file parser class
 class Parser {
  public:
-    Parser(std::istream& input, std::string file_name, Grammar& grammar);
+    Parser(util::iobuf& input, std::string file_name, Grammar& grammar);
     bool parse();
     const std::string& getFileName() const { return file_name_; }
     const std::string& getCurrentLine() const { return current_line_; }
@@ -55,7 +54,7 @@ class Parser {
         unsigned ln = 1, col = 1;
     };
 
-    std::istream& input_;
+    util::iobuf& input_;
     std::string file_name_;
     std::unique_ptr<char[]> text_;
     std::string current_line_;
@@ -65,13 +64,6 @@ class Parser {
     TokenInfo tkn_;
     Grammar& grammar_;
     std::unordered_map<std::string_view, std::string_view> options_;
-
-    static int dig(char ch) { return static_cast<int>(ch - '0'); }
-    static int hdig(char ch) {
-        if ((ch >= 'a') && (ch <= 'f')) { return static_cast<int>(ch - 'a') + 10; }
-        if ((ch >= 'A') && (ch <= 'F')) { return static_cast<int>(ch - 'A') + 10; }
-        return static_cast<int>(ch - '0');
-    }
 
     int lex();
     void logSyntaxError(int tt) const;

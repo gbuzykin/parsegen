@@ -1,9 +1,9 @@
 #include "lalrbld.h"
 
-#include <algorithm>
-#include <cassert>
+#include "util/algorithm.h"
+#include "util/format.h"
+
 #include <optional>
-#include <stdexcept>
 
 void LRBuilder::buildAnalizer() {
     buildFirstTable();
@@ -21,12 +21,12 @@ void LRBuilder::buildAnalizer() {
     pending_states.reserve(100);
 
     auto add_state = [&states = states_, &grammar = grammar_, &action_tbl, &goto_tbl](PositionSet s) {
-        auto it = std::find_if(states.begin(), states.end(), [&s](const auto& s2) {
+        auto [it, found] = util::find_if(states, [&s](const auto& s2) {
             return s2.size() == s.size() &&
                    std::equal(s2.begin(), s2.end(), s.begin(),
                               [](const auto& i1, const auto& i2) { return i1.first == i2.first; });
         });
-        if (it != states.end()) { return std::make_pair(static_cast<unsigned>(it - states.begin()), false); }
+        if (found) { return std::make_pair(static_cast<unsigned>(it - states.begin()), false); }
         // Add new state
         states.emplace_back(std::move(s));
         action_tbl.emplace_back(grammar.getTokenCount());
@@ -414,58 +414,58 @@ void LRBuilder::buildAetaTable() {
     } while (change);
 }
 
-void LRBuilder::printFirstTable(std::ostream& outp) {
-    outp << "---=== FIRST table : ===---" << std::endl << std::endl;
+void LRBuilder::printFirstTable(util::iobuf& outp) {
+    outp.write("---=== FIRST table : ===---").endl().endl();
     for (unsigned n = 0; n < first_tbl_.size(); ++n) {
-        outp << "    FIRST(" << grammar_.getSymbolName(makeNontermId(n)) << ") = { ";
+        util::fprint(outp, "    FIRST({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
         bool colon = false;
         for (unsigned symb : first_tbl_[n]) {
-            if (colon) { outp << ", "; }
-            outp << grammar_.symbolText(symb);
+            if (colon) { outp.write(", "); }
+            outp.write(grammar_.symbolText(symb));
             colon = true;
         }
-        outp << " }" << std::endl;
+        outp.write(" }").endl();
     }
-    outp << std::endl;
+    outp.endl();
 }
 
-void LRBuilder::printAetaTable(std::ostream& outp) {
-    outp << "---=== Aeta table : ===---" << std::endl << std::endl;
+void LRBuilder::printAetaTable(util::iobuf& outp) {
+    outp.write("---=== Aeta table : ===---").endl().endl();
     for (unsigned n = 0; n < Aeta_tbl_.size(); ++n) {
-        outp << "    Aeta(" << grammar_.getSymbolName(makeNontermId(n)) << ") = { ";
+        util::fprint(outp, "    Aeta({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
         bool colon = false;
         for (unsigned symb : Aeta_tbl_[n]) {
-            if (colon) { outp << ", "; }
-            outp << grammar_.getSymbolName(makeNontermId(symb));
+            if (colon) { outp.write(", "); }
+            outp.write(grammar_.getSymbolName(makeNontermId(symb)));
             colon = true;
         }
-        outp << " }" << std::endl;
+        outp.write(" }").endl();
     }
-    outp << std::endl;
+    outp.endl();
 }
 
-void LRBuilder::printStates(std::ostream& outp) {
-    outp << "---=== LALR analyser states : ===---" << std::endl << std::endl;
+void LRBuilder::printStates(util::iobuf& outp) {
+    outp.write("---=== LALR analyser states : ===---").endl().endl();
     for (unsigned n_state = 0; n_state < states_.size(); n_state++) {
-        outp << "State " << n_state << ':' << std::endl;
+        util::fprintln(outp, "State {}:", n_state);
         for (const auto& [pos, la_set] : states_[n_state]) {
             grammar_.printProduction(outp, pos.n_prod, pos.pos);
-            outp << " [";
-            for (unsigned symb : la_set.la) { outp << ' ' << grammar_.symbolText(symb); }
-            outp << " ]" << std::endl;
+            outp.write(" [");
+            for (unsigned symb : la_set.la) { outp.put(' ').write(grammar_.symbolText(symb)); }
+            outp.write(" ]").endl();
         }
-        outp << std::endl;
+        outp.endl();
 
         auto print_action = [&grammar = grammar_, &outp](unsigned token, const Action& action) {
-            outp << "    " << grammar.symbolText(token) << ", ";
+            outp.write("    ").write(grammar.symbolText(token)).write(", ");
             switch (action.type) {
-                case Action::Type::kShift: outp << "shift and goto state " << action.val << std::endl; break;
-                case Action::Type::kError: outp << "error" << std::endl; break;
+                case Action::Type::kShift: util::fprintln(outp, "shift and goto state {}", action.val); break;
+                case Action::Type::kError: outp.write("error").endl(); break;
                 case Action::Type::kReduce: {
                     if (action.val > 0) {
-                        outp << "reduce using rule " << action.val << std::endl;
+                        util::fprintln(outp, "reduce using rule {}", action.val);
                     } else {
-                        outp << "accept" << std::endl;
+                        outp.write("accept").endl();
                     }
                 } break;
             }
@@ -475,14 +475,15 @@ void LRBuilder::printStates(std::ostream& outp) {
         auto it = compr_action_tbl_.data.begin() + compr_action_tbl_.index[n_state];
         for (; it->first >= 0; ++it) { print_action(static_cast<unsigned>(it->first), it->second); }
         print_action(kTokenDefault, it->second);
-        outp << std::endl;
+        outp.endl();
 
         // Goto
         for (unsigned n = 0; n < compr_goto_tbl_.index.size(); ++n) {
-            auto it = std::find_if(compr_goto_tbl_.data.begin() + compr_goto_tbl_.index[n], compr_goto_tbl_.data.end(),
-                                   [n_state](const auto& item) { return item.first < 0 || item.first == n_state; });
-            outp << "    " << grammar_.getSymbolName(makeNontermId(n)) << ", goto state " << it->second << std::endl;
+            auto it = std::find_if(
+                compr_goto_tbl_.data.begin() + compr_goto_tbl_.index[n], compr_goto_tbl_.data.end(),
+                [n_state](const auto& item) { return item.first < 0 || item.first == static_cast<int>(n_state); });
+            util::fprintln(outp, "    {}, goto state {}", grammar_.getSymbolName(makeNontermId(n)), it->second);
         }
-        outp << std::endl;
+        outp.endl();
     }
 }

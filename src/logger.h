@@ -24,8 +24,8 @@ class Logger {
     const std::string& getMessage() const { return msg_; }
 
     template<typename... Ts>
-    LoggerTy& format(std::string_view fmt, Ts&&... args) {
-        msg_ = util::format(fmt, std::forward<Ts>(args)...);
+    LoggerTy& format(std::string_view fmt, const Ts&... args) {
+        msg_ = util::format(fmt, args...);
         return static_cast<LoggerTy&>(*this);
     }
 

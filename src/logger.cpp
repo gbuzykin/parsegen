@@ -1,18 +1,7 @@
 #include "logger.h"
 
 #include "parser.h"
-#include "util/utf8.h"
-
-#include <iostream>
-
-#define TERM_COLOR(c) "\033[1;" c "m"
-#define TERM_NORMAL   "\033[0m"
-#ifndef WIN32
-#    include <unistd.h>
-static bool isTty() { return isatty(fileno(stderr)); }
-#else
-static bool isTty() { return false; }
-#endif
+#include "util/utf.h"
 
 using namespace logger;
 
@@ -50,7 +39,9 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
     const unsigned tab_size = 4;
     unsigned col = 0, mark_limits[2] = {0, 0};
     uint32_t code = 0;
-    for (auto p = line.begin(), p1 = p; (p1 = util::from_utf8(p, line.end(), &code)) > p; p = p1) {
+    for (auto p = line.begin(), p1 = p; p != line.end(); p = p1) {
+        unsigned byte_count = util::get_utf8_byte_count(*p);
+        p1 = line.end() - p > byte_count ? p + byte_count : line.end();
         if (code == '\t') {  // Convert tab into spaces
             auto align_up = [](unsigned v, unsigned base) { return (v + base - 1) & ~(base - 1); };
             unsigned tab_pos = align_up(col + 1, tab_size);
@@ -75,49 +66,28 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
 
 std::string_view typeString(MsgType type) {
     switch (type) {
-        case MsgType::kDebug: return ": " TERM_COLOR("0;33") "debug: " TERM_NORMAL;
-        case MsgType::kInfo: return ": " TERM_COLOR("0;36") "info: " TERM_NORMAL;
-        case MsgType::kWarning: return ": " TERM_COLOR("0;35") "warning: " TERM_NORMAL;
-        case MsgType::kError: return ": " TERM_COLOR("0;31") "error: " TERM_NORMAL;
-        case MsgType::kFatal: return ": " TERM_COLOR("0;31") "fatal error: " TERM_NORMAL;
+        case MsgType::kDebug: return ": \033[1;33mdebug: \033[0m";
+        case MsgType::kInfo: return ": \033[0;34minfo: \033[0m";
+        case MsgType::kWarning: return ": \033[0;35mwarning: \033[0m";
+        case MsgType::kError: return ": \033[0;31merror: \033[0m";
+        case MsgType::kFatal: return ": \033[0;31mfatal error: \033[0m";
     }
     return "";
 }
 
-struct ColorFilter {
-    std::string_view msg;
-    friend std::ostream& operator<<(std::ostream& os, const ColorFilter& cf) {
-        const auto *p1 = cf.msg.data(), *pend = p1 + cf.msg.size();
-        if (!isTty()) {
-            for (const auto* p2 = cf.msg.data(); p2 != pend; ++p2) {
-                if (*p2 == '\033') {
-                    os.write(p1, p2 - p1);
-                    for (++p2; p2 != pend && *p2 != 'm'; ++p2) {}
-                    p1 = p2 + 1;
-                }
-            }
-        }
-        os.write(p1, pend - p1);
-        return os;
-    }
-};
-
 }  // namespace
 
 void LoggerSimple::printMessage(std::string_view msg) {
-    std::cerr << ColorFilter{TERM_COLOR("1;37")} << header_ << ColorFilter{typeString(getType())} << ColorFilter{msg}
-              << std::endl;
+    util::fprintln(util::stdbuf::log, "\033[1;37m{}{}{}", header_, typeString(getType()), msg);
 }
 
 void LoggerExtended::printMessage(std::string_view msg) {
-    std::string n_line = std::to_string(loc_.ln);
-    std::cerr << ColorFilter{TERM_COLOR("1;37")} << parser_.getFileName() << ':' << n_line
-              << ':' + std::to_string(loc_.col_first) << ColorFilter{typeString(getType())} << ColorFilter{msg}
-              << std::endl;
+    std::string n_line = util::to_string(loc_.ln);
+    util::fprintln(util::stdbuf::log, "\033[1;37m{}:{}:{}{}{}", parser_.getFileName(), n_line, loc_.col_first,
+                   typeString(getType()), msg);
 
-    std::string left_padding(n_line.size() + 1, ' ');
+    std::string left_padding(n_line.size(), ' ');
     auto [tab2space_line, mark] = markInputLine(parser_.getCurrentLine(), loc_.col_first, loc_.col_last);
-    std::cerr << ' ' << n_line << " | " << tab2space_line << std::endl;
-    std::cerr << left_padding << " | " << ColorFilter{TERM_COLOR("0;32")} << mark << ColorFilter{TERM_NORMAL}
-              << std::endl;
+    util::fprintln(util::stdbuf::log, " {} | {}", n_line, tab2space_line);
+    util::fprintln(util::stdbuf::log, " {} | \033[0;32m{}\033[0m", left_padding, mark);
 }
