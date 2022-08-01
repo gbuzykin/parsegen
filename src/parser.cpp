@@ -9,7 +9,8 @@ namespace lex_detail {
 }
 
 namespace {
-const char* findEol(const char* text, const char* boundary) {
+template<typename CharT>
+CharT* findEol(CharT* text, CharT* boundary) {
     return std::find_if(text, boundary, [](char ch) { return ch == '\n' || ch == '\0'; });
 }
 std::string_view getNextLine(const char* text, const char* boundary) {
@@ -29,12 +30,12 @@ bool Parser::parse() {
     // Read the whole file
     input_.seek(0);
     size_t n_read = input_.read(uxs::as_span(text_.get(), file_sz));
-    in_ctx_.first = text_top_ = text_.get();
-    in_ctx_.last = text_.get() + n_read;
-    current_line_ = getNextLine(in_ctx_.first, in_ctx_.last);
+    first_ = text_.get();
+    last_ = text_.get() + n_read;
+    current_line_ = getNextLine(first_, last_);
 
-    lex_state_stack_.reserve(256);
-    lex_state_stack_.push_back(lex_detail::sc_initial);
+    state_stack_.reserve_at_curr(256);
+    state_stack_.push_back(lex_detail::sc_initial);
 
     // Add default start condition
     grammar_.addStartCondition("initial");
@@ -287,31 +288,41 @@ bool Parser::parse() {
 }
 
 int Parser::lex() {
-    const char* str_start = nullptr;
-    tkn_.loc = {in_ctx_.ln, in_ctx_.col, in_ctx_.col};
+    char *str_start = nullptr, *str_end = nullptr;
+    tkn_.loc = {ln_, col_, col_};
 
     while (true) {
+        int pat = 0;
         unsigned llen = 0;
-        const char* lexeme = in_ctx_.first;
-        if (lexeme > text_.get() && *(lexeme - 1) == '\n') {
-            current_line_ = getNextLine(lexeme, in_ctx_.last);
-            ++in_ctx_.ln, in_ctx_.col = 1;
-            tkn_.loc = {in_ctx_.ln, in_ctx_.col, in_ctx_.col};
+        const char *first = first_, *lexeme = first;
+        if (first > text_.get() && *(first - 1) == '\n') {
+            current_line_ = getNextLine(first, last_);
+            ++ln_, col_ = 1;
+            tkn_.loc = {ln_, col_, col_};
         }
-        int pat = lex_detail::lex(lexeme, in_ctx_.last, lex_state_stack_, llen, false);
-        if (pat == lex_detail::err_end_of_input) {
-            int sc = lex_state_stack_.back();
-            tkn_.loc.col_last = tkn_.loc.col_first;
-            if (sc == lex_detail::sc_string || sc == lex_detail::sc_symb) { return tt_unterm_token; }
-            return tt_eof;
+        while (true) {
+            bool stack_limitation = false;
+            const char* last = last_;
+            if (state_stack_.avail() < static_cast<size_t>(last - first)) {
+                last = first + state_stack_.avail();
+                stack_limitation = true;
+            }
+            pat = lex_detail::lex(first, last, state_stack_.p_curr(), &llen, stack_limitation);
+            if (pat >= lex_detail::predef_pat_default) {
+                break;
+            } else if (stack_limitation) {
+                // enlarge state stack and continue analysis
+                state_stack_.reserve_at_curr(llen);
+                first = last;
+            } else {
+                int sc = state_stack_.back();
+                tkn_.loc.col_last = tkn_.loc.col_first;
+                if (sc == lex_detail::sc_string || sc == lex_detail::sc_symb) { return tt_unterm_token; }
+                return tt_eof;
+            }
         }
-        in_ctx_.first += llen, in_ctx_.col += llen;
-        tkn_.loc.col_last = in_ctx_.col - 1;
-
-        auto store_id_text = [&text = text_top_](const char* first, unsigned len) {
-            text = std::copy(first, first + len, text);
-            return std::string_view(text - len, len);
-        };
+        first_ += llen, col_ += llen;
+        tkn_.loc.col_last = col_ - 1;
 
         std::optional<char> escape;
         switch (pat) {
@@ -336,56 +347,57 @@ int Parser::lex() {
 
             // ------ strings
             case lex_detail::pat_string: {
-                str_start = text_top_;
-                lex_state_stack_.push_back(lex_detail::sc_string);
+                str_start = str_end = first_;
+                state_stack_.push_back(lex_detail::sc_string);
             } break;
             case lex_detail::pat_string_seq: {
-                text_top_ = std::copy(lexeme, lexeme + llen, text_top_);
+                if (str_end != lexeme) { std::copy(lexeme, lexeme + llen, str_end); }
+                str_end += llen;
             } break;
             case lex_detail::pat_string_close: {
-                tkn_.val = std::string_view(str_start, text_top_ - str_start);
-                lex_state_stack_.pop_back();
+                tkn_.val = std::string_view(str_start, str_end - str_start);
+                state_stack_.pop_back();
                 return tt_string;
             } break;
 
             // ------ symbols
             case lex_detail::pat_symb: {
                 tkn_.val = 0;
-                lex_state_stack_.push_back(lex_detail::sc_symb);
+                state_stack_.push_back(lex_detail::sc_symb);
             } break;
             case lex_detail::pat_symb_other: {
                 tkn_.val = static_cast<unsigned char>(*lexeme);
             } break;
             case lex_detail::pat_symb_close: {
-                lex_state_stack_.pop_back();
+                state_stack_.pop_back();
                 return tt_symb;
             } break;
 
             // ------ identifiers
             case lex_detail::pat_id: {
-                tkn_.val = store_id_text(lexeme, llen);
+                tkn_.val = std::string_view(lexeme, llen);
                 return tt_id;
             } break;
             case lex_detail::pat_predef_id: {
-                tkn_.val = store_id_text(lexeme, llen);
+                tkn_.val = std::string_view(lexeme, llen);
                 return tt_predef_id;
             } break;
             case lex_detail::pat_internal_id: {
-                tkn_.val = store_id_text(lexeme, llen);
+                tkn_.val = std::string_view(lexeme, llen);
                 return tt_internal_id;
             } break;
             case lex_detail::pat_token_id: {  // [id]
-                tkn_.val = store_id_text(lexeme + 1, llen - 2);
+                tkn_.val = std::string_view(lexeme + 1, llen - 2);
                 return tt_token_id;
             } break;
             case lex_detail::pat_action_id: {  // {id}
-                tkn_.val = store_id_text(lexeme + 1, llen - 2);
+                tkn_.val = std::string_view(lexeme + 1, llen - 2);
                 return tt_action_id;
             } break;
 
             // ------ comment
             case lex_detail::pat_comment: {  // Eat up comment
-                in_ctx_.first = findEol(in_ctx_.first, in_ctx_.last);
+                first_ = findEol(first_, last_);
             } break;
 
             // ------ other
@@ -399,7 +411,7 @@ int Parser::lex() {
             case lex_detail::pat_prec: return tt_prec;
             case lex_detail::pat_sep: return tt_sep;
             case lex_detail::pat_other: return static_cast<unsigned char>(*lexeme);
-            case lex_detail::pat_whitespace: tkn_.loc.col_first = in_ctx_.col; break;
+            case lex_detail::pat_whitespace: tkn_.loc.col_first = col_; break;
             case lex_detail::pat_nl: break;
             case lex_detail::pat_unterm_token: return tt_unterm_token;
             default: return -1;
@@ -407,8 +419,8 @@ int Parser::lex() {
 
         // Process escape character
         if (escape) {
-            if (lex_state_stack_.back() == lex_detail::sc_string) {
-                *text_top_++ = *escape;
+            if (state_stack_.back() == lex_detail::sc_string) {
+                *str_end++ = *escape;
             } else {
                 tkn_.val = static_cast<unsigned char>(*escape);
             }
