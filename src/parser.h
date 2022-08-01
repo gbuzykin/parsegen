@@ -48,19 +48,14 @@ class Parser {
         TokenLoc loc;
     };
 
-    struct InputContext {
-        const char* first = nullptr;
-        const char* last = nullptr;
-        unsigned ln = 1, col = 1;
-    };
-
     uxs::iobuf& input_;
     std::string file_name_;
     std::unique_ptr<char[]> text_;
     std::string current_line_;
-    char* text_top_ = nullptr;
-    InputContext in_ctx_;
-    std::vector<int> lex_state_stack_;
+    char* first_ = nullptr;
+    char* last_ = nullptr;
+    unsigned ln_ = 1, col_ = 1;
+    uxs::basic_inline_dynbuffer<int, 1> state_stack_;
     TokenInfo tkn_;
     Grammar& grammar_;
     std::unordered_map<std::string_view, std::string_view> options_;
