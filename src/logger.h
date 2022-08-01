@@ -1,6 +1,6 @@
 #pragma once
 
-#include "util/format.h"
+#include "uxs/format.h"
 
 struct TokenLoc {
     unsigned ln = 0;
@@ -25,7 +25,7 @@ class Logger {
 
     template<typename... Ts>
     LoggerTy& format(std::string_view fmt, const Ts&... args) {
-        msg_ = util::format(fmt, args...);
+        msg_ = uxs::format(fmt, args...);
         return static_cast<LoggerTy&>(*this);
     }
 

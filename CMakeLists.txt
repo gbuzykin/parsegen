@@ -13,7 +13,6 @@ else()
   if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstandalone-debug")
   endif()
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -lstdc++ -lm")
   set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
 endif()
 
@@ -25,16 +24,15 @@ endif()
 # invoked and put all files that match the pattern in the variables 
 # `sources` and `data`
 if(WIN32)
-  set(platform_dir    std-ext/platform/win)
+  set(uxs_platform_dir    uxs/platform/win)
 elseif(UNIX)
-  set(platform_dir    std-ext/platform/posix)
+  set(uxs_platform_dir    uxs/platform/posix)
 endif()
-file(GLOB_RECURSE includes      include/*.h)
-file(GLOB_RECURSE sources       src/*.h;src/*.cpp)
-file(GLOB_RECURSE std-ext_includes    std-ext/include/*.h)
-file(GLOB_RECURSE std-ext_sources     std-ext/src/*.h;std-ext/src/*.cpp)
-file(GLOB_RECURSE platform_includes    ${platform_dir}/include/*.h)
-file(GLOB_RECURSE platform_sources     ${platform_dir}/src/*.h;${platform_dir}/src/*.cpp)
+file(GLOB_RECURSE includes   include/*.h)
+file(GLOB_RECURSE sources    src/*.h;src/*.cpp)
+file(GLOB_RECURSE uxs_includes    uxs/include/*.h)
+file(GLOB_RECURSE uxs_sources     uxs/src/*.h;uxs/src/*.cpp)
+file(GLOB_RECURSE uxs_platform_sources    ${uxs_platform_dir}/src/*.h;${uxs_platform_dir}/src/*.cpp)
 # you can use set(sources src/main.cpp) etc if you don't want to
 # use globing to find files automatically
 
@@ -45,13 +43,15 @@ file(GLOB_RECURSE platform_sources     ${platform_dir}/src/*.h;${platform_dir}/s
 # add the data to the target, so it becomes visible in some IDE
 add_executable(parsegen
   .clang-format
-  ${std-ext_includes}
-  ${std-ext_sources}
-  ${platform_includes}
-  ${platform_sources}
+  ${uxs_includes}
+  ${uxs_sources}
+  ${uxs_platform_sources}
   ${includes}
   ${sources}
 )
 
+# link with these libraries
+target_link_libraries(parsegen stdc++ m)
+
 # this lets me include files relative to the root src dir with a <> pair
-target_include_directories(parsegen PUBLIC std-ext/include {platform_dir}/include include)
+target_include_directories(parsegen PUBLIC uxs/include include)

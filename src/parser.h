@@ -35,7 +35,7 @@ namespace lex_detail {
 // Input file parser class
 class Parser {
  public:
-    Parser(util::iobuf& input, std::string file_name, Grammar& grammar);
+    Parser(uxs::iobuf& input, std::string file_name, Grammar& grammar);
     bool parse();
     const std::string& getFileName() const { return file_name_; }
     const std::string& getCurrentLine() const { return current_line_; }
@@ -54,7 +54,7 @@ class Parser {
         unsigned ln = 1, col = 1;
     };
 
-    util::iobuf& input_;
+    uxs::iobuf& input_;
     std::string file_name_;
     std::unique_ptr<char[]> text_;
     std::string current_line_;
