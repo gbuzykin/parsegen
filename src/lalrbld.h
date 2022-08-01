@@ -31,9 +31,9 @@ class LRBuilder {
     unsigned getRRConflictCount() const { return rr_conflict_count_; }
     const CompressedTable<Action>& getCompressedActionTable() { return compr_action_tbl_; }
     const CompressedTable<unsigned>& getCompressedGotoTable() { return compr_goto_tbl_; }
-    void printFirstTable(util::iobuf& outp);
-    void printAetaTable(util::iobuf& outp);
-    void printStates(util::iobuf& outp);
+    void printFirstTable(uxs::iobuf& outp);
+    void printAetaTable(uxs::iobuf& outp);
+    void printStates(uxs::iobuf& outp);
 
  protected:
     struct Position {

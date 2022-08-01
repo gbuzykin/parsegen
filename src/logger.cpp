@@ -1,7 +1,8 @@
 #include "logger.h"
 
 #include "parser.h"
-#include "util/utf.h"
+
+#include "uxs/utf.h"
 
 using namespace logger;
 
@@ -17,7 +18,7 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
 
     auto p_from = line.begin();
     if (first == 0) {
-        while (p_from != line.end() && util::is_space(*p_from)) { ++p_from; }
+        while (p_from != line.end() && uxs::is_space(*p_from)) { ++p_from; }
     } else {
         p_from += first - 1;
     }
@@ -25,7 +26,7 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
     auto p_to = line.end();
     if (p_from != line.end()) {
         if (last == 0) {
-            while (--p_to != p_from && util::is_space(*p_to)) {}
+            while (--p_to != p_from && uxs::is_space(*p_to)) {}
         } else {
             p_to = std::max(p_from, line.begin() + last - 1);
         }
@@ -40,13 +41,13 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
     unsigned col = 0, mark_limits[2] = {0, 0};
     uint32_t code = 0;
     for (auto p = line.begin(), p1 = p; p != line.end(); p = p1) {
-        unsigned byte_count = util::get_utf8_byte_count(*p);
+        unsigned byte_count = uxs::get_utf8_byte_count(*p);
         p1 = line.end() - p > byte_count ? p + byte_count : line.end();
         if (code == '\t') {  // Convert tab into spaces
             auto align_up = [](unsigned v, unsigned base) { return (v + base - 1) & ~(base - 1); };
             unsigned tab_pos = align_up(col + 1, tab_size);
             while (col < tab_pos) { tab2space_line.push_back(' '), ++col; }
-        } else if (util::is_space(*p)) {
+        } else if (uxs::is_space(*p)) {
             tab2space_line.push_back(' '), ++col;
         } else {
             while (p < p1) { tab2space_line.push_back(*p++); }
@@ -78,16 +79,16 @@ std::string_view typeString(MsgType type) {
 }  // namespace
 
 void LoggerSimple::printMessage(std::string_view msg) {
-    util::fprintln(util::stdbuf::log, "\033[1;37m{}{}{}", header_, typeString(getType()), msg);
+    uxs::fprintln(uxs::stdbuf::log, "\033[1;37m{}{}{}", header_, typeString(getType()), msg);
 }
 
 void LoggerExtended::printMessage(std::string_view msg) {
-    std::string n_line = util::to_string(loc_.ln);
-    util::fprintln(util::stdbuf::log, "\033[1;37m{}:{}:{}{}{}", parser_.getFileName(), n_line, loc_.col_first,
-                   typeString(getType()), msg);
+    std::string n_line = uxs::to_string(loc_.ln);
+    uxs::fprintln(uxs::stdbuf::log, "\033[1;37m{}:{}:{}{}{}", parser_.getFileName(), n_line, loc_.col_first,
+                  typeString(getType()), msg);
 
     std::string left_padding(n_line.size(), ' ');
     auto [tab2space_line, mark] = markInputLine(parser_.getCurrentLine(), loc_.col_first, loc_.col_last);
-    util::fprintln(util::stdbuf::log, " {} | {}", n_line, tab2space_line);
-    util::fprintln(util::stdbuf::log, " {} | \033[0;32m{}\033[0m", left_padding, mark);
+    uxs::fprintln(uxs::stdbuf::log, " {} | {}", n_line, tab2space_line);
+    uxs::fprintln(uxs::stdbuf::log, " {} | \033[0;32m{}\033[0m", left_padding, mark);
 }
