@@ -64,7 +64,7 @@ static int lex(const char* first, const char* last, int** p_sptr, unsigned* p_ll
     int *sptr = *p_sptr, *sptr0 = sptr - *p_llen;
     int state = *(sptr - 1);
     while (first < last) { /* Analyze till transition is impossible */
-        uint8_t meta = symb2meta[(unsigned char)(*first)];
+        uint8_t meta = symb2meta[(unsigned char)*first];
         do {
             int l = base[state] + meta;
             if (check[l] == state) {

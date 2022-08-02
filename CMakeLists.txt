@@ -51,7 +51,10 @@ add_executable(parsegen
 )
 
 # link with these libraries
-target_link_libraries(parsegen stdc++ m)
+if(MSVC)
+else()
+  target_link_libraries(parsegen stdc++ m)
+endif()
 
 # this lets me include files relative to the root src dir with a <> pair
 target_include_directories(parsegen PUBLIC uxs/include include)
