@@ -25,7 +25,7 @@ enum {
     tt_nonassoc,
     tt_prec,
     tt_sep,
-    tt_unterm_token,
+    tt_lexical_error,
 };
 
 namespace lex_detail {
