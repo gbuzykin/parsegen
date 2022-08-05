@@ -30,7 +30,7 @@ class Logger {
     }
 
  private:
-    MsgType type_ = MsgType::kDebug;
+    MsgType type_;
     std::string msg_;
 };
 
