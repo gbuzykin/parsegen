@@ -18,7 +18,7 @@ enum {
     pat_string_close,
     pat_symb_other,
     pat_symb_close,
-    pat_unterm_token,
+    pat_unexpected_nl,
     pat_whitespace,
     pat_start,
     pat_token,

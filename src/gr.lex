@@ -27,7 +27,7 @@ string_close  <string> \"
 symb_other    <symb> [^'\\\n]
 symb_close    <symb> \'
 
-unterm_token  <string symb> \n
+unexpected_nl  <string symb> \n
 
 whitespace    {ws}+
 

@@ -291,6 +291,14 @@ int Parser::lex() {
     char *str_start = nullptr, *str_end = nullptr;
     tkn_.loc = {ln_, col_, col_};
 
+    auto print_unterm_token_msg = [this] { logger::error(*this, tkn_.loc).format("unterminated token"); };
+    auto print_zero_escape_char_msg = [this] {
+        logger::error(*this, tkn_.loc).format("zero escape character is not allowed");
+    };
+    auto print_multiple_characters_not_allowed_msg = [this] {
+        logger::error(*this, tkn_.loc).format("multiple characters are not allowed");
+    };
+
     while (true) {
         int pat = 0;
         unsigned llen = 0;
@@ -317,8 +325,9 @@ int Parser::lex() {
             } else {
                 int sc = state_stack_.back();
                 tkn_.loc.col_last = tkn_.loc.col_first;
-                if (sc == lex_detail::sc_string || sc == lex_detail::sc_symb) { return tt_unterm_token; }
-                return tt_eof;
+                if (sc != lex_detail::sc_string && sc != lex_detail::sc_symb) { return tt_eof; }
+                print_unterm_token_msg();
+                return tt_lexical_error;
             }
         }
         first_ += llen, col_ += llen;
@@ -338,11 +347,19 @@ int Parser::lex() {
             case lex_detail::pat_escape_hex: {
                 escape = uxs::dig_v<16>(lexeme[2]);
                 if (llen > 3) { *escape = (*escape << 4) + uxs::dig_v<16>(lexeme[3]); }
+                if (!*escape) {
+                    print_zero_escape_char_msg();
+                    return tt_lexical_error;
+                }
             } break;
             case lex_detail::pat_escape_oct: {
                 escape = uxs::dig_v<8>(lexeme[1]);
                 if (llen > 2) { *escape = (*escape << 3) + uxs::dig_v<8>(lexeme[2]); }
                 if (llen > 3) { *escape = (*escape << 3) + uxs::dig_v<8>(lexeme[3]); }
+                if (!*escape) {
+                    print_zero_escape_char_msg();
+                    return tt_lexical_error;
+                }
             } break;
 
             // ------ strings
@@ -366,6 +383,10 @@ int Parser::lex() {
                 state_stack_.push_back(lex_detail::sc_symb);
             } break;
             case lex_detail::pat_symb_other: {
+                if (std::get<unsigned>(tkn_.val)) {
+                    print_multiple_characters_not_allowed_msg();
+                    return tt_lexical_error;
+                }
                 tkn_.val = static_cast<unsigned char>(*lexeme);
             } break;
             case lex_detail::pat_symb_close: {
@@ -413,16 +434,22 @@ int Parser::lex() {
             case lex_detail::pat_other: return static_cast<unsigned char>(*lexeme);
             case lex_detail::pat_whitespace: tkn_.loc.col_first = col_; break;
             case lex_detail::pat_nl: break;
-            case lex_detail::pat_unterm_token: return tt_unterm_token;
-            default: return -1;
+            case lex_detail::pat_unexpected_nl: {
+                print_unterm_token_msg();
+                return tt_lexical_error;
+            } break;
+            default: return tt_eof;
         }
 
         // Process escape character
         if (escape) {
             if (state_stack_.back() == lex_detail::sc_string) {
                 *str_end++ = *escape;
-            } else {
+            } else if (!std::get<unsigned>(tkn_.val)) {
                 tkn_.val = static_cast<unsigned char>(*escape);
+            } else {
+                print_multiple_characters_not_allowed_msg();
+                return tt_lexical_error;
             }
         }
     }
@@ -433,7 +460,7 @@ void Parser::logSyntaxError(int tt) const {
     std::string_view msg;
     switch (tt) {
         case tt_eof: msg = "unexpected end of file"; break;
-        case tt_unterm_token: msg = "unterminated token"; break;
+        case tt_lexical_error: return;
         default: msg = "unexpected token"; break;
     }
     logger::error(*this, tkn_.loc).format(msg);
