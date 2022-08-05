@@ -39,11 +39,10 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
 
     const unsigned tab_size = 4;
     unsigned col = 0, mark_limits[2] = {0, 0};
-    uint32_t code = 0;
     for (auto p = line.begin(), p1 = p; p != line.end(); p = p1) {
         unsigned byte_count = uxs::get_utf8_byte_count(*p);
         p1 = line.end() - p > byte_count ? p + byte_count : line.end();
-        if (code == '\t') {  // Convert tab into spaces
+        if (*p == '\t') {  // Convert tab into spaces
             auto align_up = [](unsigned v, unsigned base) { return (v + base - 1) & ~(base - 1); };
             unsigned tab_pos = align_up(col + 1, tab_size);
             while (col < tab_pos) { tab2space_line.push_back(' '), ++col; }
@@ -72,8 +71,8 @@ std::string_view typeString(MsgType type) {
         case MsgType::kWarning: return ": \033[0;35mwarning: \033[0m";
         case MsgType::kError: return ": \033[0;31merror: \033[0m";
         case MsgType::kFatal: return ": \033[0;31mfatal error: \033[0m";
+        default: UNREACHABLE_CODE;
     }
-    return "";
 }
 
 }  // namespace
