@@ -79,7 +79,7 @@ As the result two files with default names `parser_defs.h` and `parser_analyzer.
 If it is needed to specify the names explicitly the following should be issued:
 
 ```bash
-./parsegen test.gr -h <new-defs-file-name> -o <new-analyzer-file-name>
+./parsegen test.gr -o <new-analyzer-file-name> --header-file=<new-defs-file-name>
 ```
 
 File `parser_defs.h` contains numerical identifiers for tokens, actions, and start conditions (or
@@ -188,12 +188,13 @@ int main() {
 
 ```bash
 $ ./parsegen --help
-Usage: parsegen [options] file
-Options:
-    -o <file>           Place the output analyzer into <file>.
-    -h <file>           Place the output definitions into <file>.
-    --report <file>     Place analyzer build report into <file>.
-    --help              Display this information.
+OVERVIEW: A tool for LALR-grammar based parser generation
+USAGE: ./parsegen file [-o<file>] [--header-file=<file>] [-h] [-V]
+OPTIONS: 
+    -o, --outfile=<file>  Place the output analyzer into <file>.
+    --header-file=<file>  Place the output definitions into <file>.
+    -h, --help            Display this information.
+    -V, --version         Display version.
 ```
 
 ## How to Build `parsegen`
