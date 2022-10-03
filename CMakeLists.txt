@@ -17,6 +17,9 @@ else()
   set(CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=address")
 endif()
 
+file(READ "VERSION" VERSION)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DVERSION=${VERSION}")
+
 ###############################################################################
 ## file globbing ##############################################################
 ###############################################################################

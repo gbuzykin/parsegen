@@ -1,7 +1,11 @@
 #include "lalrbld.h"
 #include "parser.h"
 
+#include "uxs/cli/parser.h"
 #include "uxs/io/filebuf.h"
+
+#define XSTR(s) STR(s)
+#define STR(s)  #s
 
 template<typename Iter>
 void outputData(uxs::iobuf& outp, Iter from, Iter to, size_t ntab = 0) {
@@ -85,41 +89,46 @@ void outputParserEngine(uxs::iobuf& outp) {
 
 int main(int argc, char** argv) {
     try {
+        bool show_help = false, show_version = false;
         std::string input_file_name;
         std::string analyzer_file_name("parser_analyzer.inl");
         std::string defs_file_name("parser_defs.h");
         std::string report_file_name;
-        for (int i = 1; i < argc; ++i) {
-            std::string_view arg(argv[i]);
-            if (arg == "-o") {
-                if (++i < argc) { analyzer_file_name = argv[i]; }
-            } else if (arg == "-h") {
-                if (++i < argc) { defs_file_name = argv[i]; }
-            } else if (arg == "--report") {
-                if (++i < argc) { report_file_name = argv[i]; }
-            } else if (arg == "--help") {
-                // clang-format off
-                static constexpr std::string_view text[] = {
-                    "Usage: parsegen [options] file",
-                    "Options:",
-                    "    -o <file>           Place the output analyzer into <file>.",
-                    "    -h <file>           Place the output definitions into <file>.",
-                    "    --report <file>     Place analyzer build report into <file>.",
-                    "    --help              Display this information.",
-                };
-                // clang-format on
-                for (const auto& l : text) { uxs::stdbuf::out.write(l).endl(); }
-                return 0;
-            } else if (arg[0] != '-') {
-                input_file_name = arg;
-            } else {
-                logger::fatal().format("unknown command line option `{}`", arg);
-                return -1;
-            }
-        }
+        auto cli = uxs::cli::command(argv[0])
+                   << uxs::cli::overview("A tool for LALR-grammar based parser generation")
+                   << uxs::cli::value("file", input_file_name)
+                   << (uxs::cli::option({"-o", "--outfile="}) & uxs::cli::value("~<file>", analyzer_file_name)) %
+                          "Place the output analyzer into <file>."
+                   << (uxs::cli::option({"--header-file="}) & uxs::cli::value("~<file>", defs_file_name)) %
+                          "Place the output definitions into <file>."
+                   << uxs::cli::option({"-h", "--help"}).set(show_help) % "Display this information."
+                   << uxs::cli::option({"-V", "--version"}).set(show_version) % "Display version.";
 
-        if (input_file_name.empty()) {
-            logger::fatal().format("no input file specified");
+        auto parse_result = cli->parse(argc, argv);
+        if (show_help) {
+            for (auto const* node = parse_result.node; node; node = node->get_parent()) {
+                if (node->get_type() == uxs::cli::node_type::kCommand) {
+                    uxs::stdbuf::out.write(static_cast<const uxs::cli::basic_command<char>&>(*node).make_man_page(true));
+                    break;
+                }
+            }
+            return 0;
+        } else if (show_version) {
+            uxs::stdbuf::out.write(XSTR(VERSION)).endl();
+            return 0;
+        } else if (parse_result.status != uxs::cli::parsing_status::kOk) {
+            switch (parse_result.status) {
+                case uxs::cli::parsing_status::kUnknownOption: {
+                    logger::fatal().format("unknown command line option `{}`", argv[parse_result.arg_count]);
+                } break;
+                case uxs::cli::parsing_status::kInvalidValue: {
+                    logger::fatal().format("invalid command line argument: {}", argv[parse_result.arg_count]);
+                } break;
+                case uxs::cli::parsing_status::kUnspecifiedValue: {
+                    if (input_file_name.empty()) { logger::fatal().format("no input file specified"); }
+                } break;
+                default: break;
+            }
             return -1;
         }
 
