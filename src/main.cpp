@@ -97,9 +97,9 @@ int main(int argc, char** argv) {
         auto cli = uxs::cli::command(argv[0])
                    << uxs::cli::overview("A tool for LALR-grammar based parser generation")
                    << uxs::cli::value("file", input_file_name)
-                   << (uxs::cli::option({"-o", "--outfile="}) & uxs::cli::value("~<file>", analyzer_file_name)) %
+                   << (uxs::cli::option({"-o", "--outfile="}) & uxs::cli::value("<file>", analyzer_file_name)) %
                           "Place the output analyzer into <file>."
-                   << (uxs::cli::option({"--header-file="}) & uxs::cli::value("~<file>", defs_file_name)) %
+                   << (uxs::cli::option({"--header-file="}) & uxs::cli::value("<file>", defs_file_name)) %
                           "Place the output definitions into <file>."
                    << uxs::cli::option({"-h", "--help"}).set(show_help) % "Display this information."
                    << uxs::cli::option({"-V", "--version"}).set(show_version) % "Display version.";
