@@ -122,7 +122,12 @@ int main(int argc, char** argv) {
                     logger::fatal().format("unknown command line option `{}`", argv[parse_result.arg_count]);
                 } break;
                 case uxs::cli::parsing_status::kInvalidValue: {
-                    logger::fatal().format("invalid command line argument: {}", argv[parse_result.arg_count]);
+                    if (parse_result.arg_count < argc) {
+                        logger::fatal().format("invalid command line argument `{}`", argv[parse_result.arg_count]);
+                    } else {
+                        logger::fatal().format("expected command line argument after `{}`",
+                                               argv[parse_result.arg_count - 1]);
+                    }
                 } break;
                 case uxs::cli::parsing_status::kUnspecifiedValue: {
                     if (input_file_name.empty()) { logger::fatal().format("no input file specified"); }
