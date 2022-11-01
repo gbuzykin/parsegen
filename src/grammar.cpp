@@ -3,7 +3,7 @@
 #include "uxs/algorithm.h"
 #include "uxs/format.h"
 
-Grammar::Grammar() {
+Grammar::Grammar(std::string file_name) : file_name_(std::move(file_name)) {
     // Initialize predefined tokens
     tokens_.resize(kCharCount + 3);  // Characters and three specials: $empty, $default, $error
     symbol_tbl_.insertName("$empty", kTokenEmpty);
@@ -159,6 +159,7 @@ void Grammar::printActions(uxs::iobuf& outp) const {
 void Grammar::printGrammar(uxs::iobuf& outp) const {
     outp.write("---=== Grammar : ===---").endl().endl();
     for (unsigned n_prod = 0; n_prod < static_cast<unsigned>(productions_.size()); ++n_prod) {
+        uxs::fprint(outp, "    ({}) ", n_prod);
         printProduction(outp, n_prod, std::nullopt);
         const auto& prod = productions_[n_prod];
         if (prod.action > 0) { outp.put(' ').write(decoratedSymbolText(makeActionId(prod.action))); }
@@ -170,7 +171,7 @@ void Grammar::printGrammar(uxs::iobuf& outp) const {
 
 void Grammar::printProduction(uxs::iobuf& outp, unsigned n_prod, std::optional<unsigned> pos) const {
     const auto& prod = productions_[n_prod];
-    uxs::fprint(outp, "    ({}) {} ->", n_prod, getSymbolName(prod.lhs));
+    uxs::fprint(outp, "{} ->", getSymbolName(prod.lhs));
     if (pos) {
         for (size_t i = 0; i < *pos; ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
         outp.write(" .");

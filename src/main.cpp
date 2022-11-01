@@ -143,19 +143,19 @@ int main(int argc, char** argv) {
             return -1;
         }
 
-        Grammar grammar;
+        Grammar grammar(input_file_name);
         Parser parser(ifile, input_file_name, grammar);
         if (!parser.parse()) { return -1; }
 
         LRBuilder lr_builder(grammar);
-        lr_builder.buildAnalizer();
 
-        if (unsigned sr_count = lr_builder.getSRConflictCount(); sr_count > 0) {
-            logger::warning(input_file_name).format("{} shift/reduce conflict(s) found", sr_count);
-        }
-        if (unsigned rr_count = lr_builder.getRRConflictCount(); rr_count > 0) {
-            logger::warning(input_file_name).format("{} reduce/reduce conflict(s) found", rr_count);
-        }
+        logger::info(input_file_name).format("\033[1;34mbuilding analyzer...\033[0m");
+        lr_builder.build();
+
+        logger::info(input_file_name)
+            .format("{}done:\033[0m {} shift/reduce, {} reduce/reduce conflict(s) found",
+                    !lr_builder.getSRConflictCount() && !lr_builder.getRRConflictCount() ? "\033[1;32m" : "\033[1;33m",
+                    lr_builder.getSRConflictCount(), lr_builder.getRRConflictCount());
 
         if (!report_file_name.empty()) {
             if (uxs::filebuf ofile(report_file_name.c_str(), "w"); ofile) {

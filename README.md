@@ -73,6 +73,10 @@ Then, in order to generate our syntax analyzer let's issue the following:
 
 ```bash
 ./parsegen test.gr
+test.gr: info: building analyzer...
+test.gr: info:  - action table row size: max 6, avg 2
+test.gr: info:  - goto table row size: max 7, avg 4
+test.gr: info: done: 0 shift/reduce, 0 reduce/reduce conflict(s) found
 ```
 
 As the result two files with default names `parser_defs.h` and `parser_analyzer.inl` are generated.
@@ -189,8 +193,8 @@ int main() {
 ```bash
 $ ./parsegen --help
 OVERVIEW: A tool for LALR-grammar based parser generation
-USAGE: ./parsegen file [-o<file>] [--header-file=<file>] [-h] [-V]
-OPTIONS: 
+USAGE: ./parsegen.exe file [-o <file>] [--header-file=<file>] [-h] [-V]
+OPTIONS:
     -o, --outfile=<file>  Place the output analyzer into <file>.
     --header-file=<file>  Place the output definitions into <file>.
     -h, --help            Display this information.
