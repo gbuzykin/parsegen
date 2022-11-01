@@ -25,7 +25,8 @@ class LRBuilder {
     };
 
     explicit LRBuilder(const Grammar& grammar) : grammar_(grammar) {}
-    void buildAnalizer();
+
+    void build();
     unsigned getStateCount() const { return static_cast<unsigned>(states_.size()); }
     unsigned getSRConflictCount() const { return sr_conflict_count_; }
     unsigned getRRConflictCount() const { return rr_conflict_count_; }

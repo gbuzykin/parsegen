@@ -1,11 +1,14 @@
 #include "lalrbld.h"
 
+#include "logger.h"
+
 #include "uxs/algorithm.h"
 #include "uxs/format.h"
+#include "uxs/io/ostringbuf.h"
 
 #include <optional>
 
-void LRBuilder::buildAnalizer() {
+void LRBuilder::build() {
     buildFirstTable();
     buildAetaTable();
 
@@ -121,6 +124,11 @@ void LRBuilder::buildAnalizer() {
     } while (change);
 
     // Generate actions :
+    auto get_prod_text = [this](unsigned n_prod) {
+        uxs::ostringbuf production_text;
+        grammar_.printProduction(production_text, n_prod, std::nullopt);
+        return production_text.str();
+    };
 
     for (unsigned n_state = 0; n_state < states_.size(); ++n_state) {
         for (const auto& [pos, la_set] : calcClosure(states_[n_state])) {
@@ -150,9 +158,15 @@ void LRBuilder::buildAnalizer() {
                             }
                         }
                     } else {
+                        logger::warning(grammar_.getFileName())
+                            .format("shift/reduce conflict for `{}` production before `{}` look-ahead token",
+                                    get_prod_text(pos.n_prod), grammar_.symbolText(symb));
                         ++sr_conflict_count_;
                     }
                 } else {  // Reduce-Reduce conflict
+                    logger::warning(grammar_.getFileName())
+                        .format("reduce/reduce conflict for `{}` and `{}` productions before `{}` look-ahead token",
+                                get_prod_text(action.val), get_prod_text(pos.n_prod), grammar_.symbolText(symb));
                     ++rr_conflict_count_;
                 }
             }
@@ -166,6 +180,7 @@ void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& act
                                      const std::vector<std::vector<unsigned>>& goto_tbl) {
     // Compress action table :
 
+    size_t row_size_max = 0, row_size_avg = 0, row_count = 0;
     compr_action_tbl_.index.resize(action_tbl.size());
     compr_action_tbl_.data.reserve(10000);
     for (unsigned n_state = 0; n_state < action_tbl.size(); ++n_state) {
@@ -213,7 +228,8 @@ void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& act
         }
 
         // Build compressed table
-        compr_action_tbl_.index[n_state] = static_cast<unsigned>(compr_action_tbl_.data.size());
+        size_t current_table_size = compr_action_tbl_.data.size();
+        compr_action_tbl_.index[n_state] = static_cast<unsigned>(current_table_size);
         for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
             const auto& action = action_tbl[n_state][symb];
             if (!possible_reduce_action || action.type != Action::Type::kError) {
@@ -224,10 +240,18 @@ void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& act
         }
         // Add default action
         compr_action_tbl_.data.emplace_back(-1, most_freq_action);
+
+        size_t row_size = compr_action_tbl_.data.size() - current_table_size;
+        row_size_max = std::max(row_size_max, row_size), row_size_avg += row_size, ++row_count;
     }
+
+    row_size_avg /= row_count;
+
+    logger::info(grammar_.getFileName()).format(" - action table row size: max {}, avg {}", row_size_max, row_size_avg);
 
     // Compress goto table :
 
+    row_size_max = 0, row_size_avg = 0, row_count = 0;
     compr_goto_tbl_.index.resize(grammar_.getNontermCount());
     compr_goto_tbl_.data.reserve(10000);
     for (unsigned n = 0; n < grammar_.getNontermCount(); ++n) {
@@ -237,11 +261,14 @@ void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& act
             unsigned n_new_state = goto_tbl[n_state][n];
             if (n_new_state > 0) { ++histo[n_new_state]; }
         }
+
         // Find the most frequent state
         auto max_it = std::max_element(histo.begin(), histo.end());
         unsigned n_most_freq_state = static_cast<unsigned>(max_it - histo.begin());
+
         // Build compressed table
-        compr_goto_tbl_.index[n] = static_cast<unsigned>(compr_goto_tbl_.data.size());
+        size_t current_table_size = compr_goto_tbl_.data.size();
+        compr_goto_tbl_.index[n] = static_cast<unsigned>(current_table_size);
         for (unsigned n_state = 0; n_state < goto_tbl.size(); ++n_state) {
             unsigned n_new_state = goto_tbl[n_state][n];
             if (n_new_state > 0 && n_new_state != n_most_freq_state) {
@@ -249,7 +276,14 @@ void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& act
             }
         }
         compr_goto_tbl_.data.emplace_back(-1, n_most_freq_state);
+
+        size_t row_size = compr_goto_tbl_.data.size() - current_table_size;
+        row_size_max = std::max(row_size_max, row_size), row_size_avg += row_size, ++row_count;
     }
+
+    row_size_avg /= row_count;
+
+    logger::info(grammar_.getFileName()).format(" - goto table row size: max {}, avg {}", row_size_max, row_size_avg);
 }
 
 ValueSet LRBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
@@ -449,6 +483,7 @@ void LRBuilder::printStates(uxs::iobuf& outp) {
     for (unsigned n_state = 0; n_state < states_.size(); n_state++) {
         uxs::fprintln(outp, "State {}:", n_state);
         for (const auto& [pos, la_set] : states_[n_state]) {
+            uxs::fprint(outp, "    ({}) ", pos.n_prod);
             grammar_.printProduction(outp, pos.n_prod, pos.pos);
             outp.write(" [");
             for (unsigned symb : la_set.la) { outp.put(' ').write(grammar_.symbolText(symb)); }

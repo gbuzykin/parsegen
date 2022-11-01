@@ -43,7 +43,7 @@ class Grammar {
         int prec;
     };
 
-    Grammar();
+    explicit Grammar(std::string file_name);
     std::pair<unsigned, bool> addToken(std::string name);
     std::pair<unsigned, bool> addNonterm(std::string name);
     std::pair<unsigned, bool> addAction(std::string name);
@@ -52,6 +52,7 @@ class Grammar {
     bool addStartCondition(std::string name);
     bool setStartConditionProd(std::string_view name, unsigned n_prod);
 
+    const std::string& getFileName() const { return file_name_; }
     unsigned getTokenCount() const { return static_cast<unsigned>(tokens_.size()); }
     const TokenInfo& getTokenInfo(unsigned id) const { return tokens_[id]; }
     unsigned getNontermCount() const { return nonterm_count_; }
@@ -76,6 +77,7 @@ class Grammar {
     [[nodiscard]] std::string symbolText(unsigned id) const;
 
  private:
+    std::string file_name_;
     unsigned nonterm_count_ = 0;
     unsigned action_count_ = 1;
     std::vector<TokenInfo> tokens_;
