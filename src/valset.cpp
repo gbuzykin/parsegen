@@ -29,7 +29,7 @@ unsigned ValueSet::getNextValue(unsigned v) const {
     return v;
 }
 
-void ValueSet::addValues(unsigned from, unsigned to) {
+ValueSet& ValueSet::addValues(unsigned from, unsigned to) {
     assert(from <= to && to <= kMaxValue);
     auto it = set_.begin() + nword(from), it_last = set_.begin() + nword(++to);
     if (it == it_last) {
@@ -39,9 +39,10 @@ void ValueSet::addValues(unsigned from, unsigned to) {
         while (it != it_last) { *it++ = ~0ul; }
         if (it_last != set_.end()) { *it_last |= bitmask(to) - 1; }
     }
+    return *this;
 }
 
-void ValueSet::removeValues(unsigned from, unsigned to) {
+ValueSet& ValueSet::removeValues(unsigned from, unsigned to) {
     assert(from <= to && to <= kMaxValue);
     auto it = set_.begin() + nword(from), it_last = set_.begin() + nword(++to);
     if (it == it_last) {
@@ -51,6 +52,7 @@ void ValueSet::removeValues(unsigned from, unsigned to) {
         while (it != it_last) { *it++ = 0ul; }
         if (it_last != set_.end()) { *it_last &= ~(bitmask(to) - 1); }
     }
+    return *this;
 }
 
 ValueSet& ValueSet::operator|=(const ValueSet& rhs) {

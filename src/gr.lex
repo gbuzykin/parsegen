@@ -1,10 +1,10 @@
 %start string
 %start symb
 
-dig     [0-9]
+dig     [[:digit:]]
 odig    [0-7]
-hdig    [0-9a-fA-F]
-letter  [a-zA-Z]
+hdig    [[:xdigit:]]
+letter  [[:alpha:]]
 id      ({letter}|_)({letter}|{dig}|_)*
 ws      [ \f\r\t\v]
 
@@ -43,7 +43,7 @@ sep         <initial> "%%"
 token_id    <initial> \[{id}\]
 action_id   <initial> \{{id}\}
 predef_id   <initial> "$empty"|"$default"|"$error"
-internal_id <initial> $({letter}|{dig}|_)+
+internal_id <initial> \$({letter}|{dig}|_)+
 id          <initial> {id}
 comment     <initial> #
 

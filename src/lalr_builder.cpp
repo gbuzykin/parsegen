@@ -1,4 +1,4 @@
-#include "lalrbld.h"
+#include "lalr_builder.h"
 
 #include "logger.h"
 
@@ -8,7 +8,7 @@
 
 #include <optional>
 
-void LRBuilder::build() {
+void LalrBuilder::build() {
     buildFirstTable();
     buildAetaTable();
 
@@ -176,8 +176,8 @@ void LRBuilder::build() {
     makeCompressedTables(action_tbl, goto_tbl);
 }
 
-void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& action_tbl,
-                                     const std::vector<std::vector<unsigned>>& goto_tbl) {
+void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& action_tbl,
+                                       const std::vector<std::vector<unsigned>>& goto_tbl) {
     // Compress action table :
 
     size_t row_size_max = 0, row_size_avg = 0, row_count = 0;
@@ -286,7 +286,7 @@ void LRBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& act
     logger::info(grammar_.getFileName()).format(" - goto table row size: max {}, avg {}", row_size_max, row_size_avg);
 }
 
-ValueSet LRBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
+ValueSet LalrBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
     ValueSet first;
     bool is_empty_included = true;
 
@@ -312,7 +312,7 @@ ValueSet LRBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
     return first;
 }
 
-LRBuilder::PositionSet LRBuilder::calcGoto(const PositionSet& s, unsigned symb) {
+LalrBuilder::PositionSet LalrBuilder::calcGoto(const PositionSet& s, unsigned symb) {
     ValueSet nonkern;
     PositionSet s_next;
 
@@ -340,7 +340,7 @@ LRBuilder::PositionSet LRBuilder::calcGoto(const PositionSet& s, unsigned symb) 
     return s_next;
 }
 
-LRBuilder::PositionSet LRBuilder::calcClosure(const PositionSet& s) {
+LalrBuilder::PositionSet LalrBuilder::calcClosure(const PositionSet& s) {
     ValueSet nonkern;
     std::vector<ValueSet> nonterm_la(grammar_.getNontermCount());
 
@@ -404,7 +404,7 @@ LRBuilder::PositionSet LRBuilder::calcClosure(const PositionSet& s) {
     return closure;
 }
 
-void LRBuilder::buildFirstTable() {
+void LalrBuilder::buildFirstTable() {
     first_tbl_.resize(grammar_.getNontermCount());
 
     bool change;
@@ -423,7 +423,7 @@ void LRBuilder::buildFirstTable() {
     } while (change);
 }
 
-void LRBuilder::buildAetaTable() {
+void LalrBuilder::buildAetaTable() {
     Aeta_tbl_.resize(grammar_.getNontermCount());
 
     for (unsigned n = 0; n < Aeta_tbl_.size(); ++n) { Aeta_tbl_[n].addValue(n); }
@@ -448,7 +448,7 @@ void LRBuilder::buildAetaTable() {
     } while (change);
 }
 
-void LRBuilder::printFirstTable(uxs::iobuf& outp) {
+void LalrBuilder::printFirstTable(uxs::iobuf& outp) {
     outp.write("---=== FIRST table : ===---").endl().endl();
     for (unsigned n = 0; n < first_tbl_.size(); ++n) {
         uxs::fprint(outp, "    FIRST({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
@@ -463,7 +463,7 @@ void LRBuilder::printFirstTable(uxs::iobuf& outp) {
     outp.endl();
 }
 
-void LRBuilder::printAetaTable(uxs::iobuf& outp) {
+void LalrBuilder::printAetaTable(uxs::iobuf& outp) {
     outp.write("---=== Aeta table : ===---").endl().endl();
     for (unsigned n = 0; n < Aeta_tbl_.size(); ++n) {
         uxs::fprint(outp, "    Aeta({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
@@ -478,7 +478,7 @@ void LRBuilder::printAetaTable(uxs::iobuf& outp) {
     outp.endl();
 }
 
-void LRBuilder::printStates(uxs::iobuf& outp) {
+void LalrBuilder::printStates(uxs::iobuf& outp) {
     outp.write("---=== LALR analyser states : ===---").endl().endl();
     for (unsigned n_state = 0; n_state < states_.size(); n_state++) {
         uxs::fprintln(outp, "State {}:", n_state);

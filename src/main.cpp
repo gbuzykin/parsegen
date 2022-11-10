@@ -1,4 +1,4 @@
-#include "lalrbld.h"
+#include "lalr_builder.h"
 #include "parser.h"
 
 #include "uxs/cli/parser.h"
@@ -147,7 +147,7 @@ int main(int argc, char** argv) {
         Parser parser(ifile, input_file_name, grammar);
         if (!parser.parse()) { return -1; }
 
-        LRBuilder lr_builder(grammar);
+        LalrBuilder lr_builder(grammar);
 
         logger::info(input_file_name).format("\033[1;34mbuilding analyzer...\033[0m");
         lr_builder.build();
@@ -219,11 +219,11 @@ int main(int argc, char** argv) {
         const auto& action_table = lr_builder.getCompressedActionTable();
         std::vector<int> action_idx(action_table.index.size()), action_list;
         action_list.reserve(2 * action_table.data.size());
-        auto action_code = [](const LRBuilder::Action& action) {
+        auto action_code = [](const LalrBuilder::Action& action) {
             enum { kShiftFlag = 1, kFlagCount = 1 };
             switch (action.type) {
-                case LRBuilder::Action::Type::kShift: return static_cast<int>(action.val << kFlagCount) | kShiftFlag;
-                case LRBuilder::Action::Type::kReduce: return static_cast<int>(3 * action.val) << kFlagCount;
+                case LalrBuilder::Action::Type::kShift: return static_cast<int>(action.val << kFlagCount) | kShiftFlag;
+                case LalrBuilder::Action::Type::kReduce: return static_cast<int>(3 * action.val) << kFlagCount;
                 default: break;
             }
             return -1;
