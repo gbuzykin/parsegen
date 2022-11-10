@@ -1,4 +1,4 @@
-#include "nametbl.h"
+#include "name_table.h"
 
 #include <stdexcept>
 

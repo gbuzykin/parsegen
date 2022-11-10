@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nametbl.h"
+#include "name_table.h"
 #include "valset.h"
 
 #include "uxs/io/iobuf.h"

@@ -7,8 +7,8 @@
 #include <tuple>
 #include <vector>
 
-// LR table builder class
-class LRBuilder {
+// LALR table builder class
+class LalrBuilder {
  public:
     struct Action {
         enum class Type { kShift = 0, kReduce, kError };
@@ -24,7 +24,7 @@ class LRBuilder {
         std::vector<std::pair<int, Ty>> data;
     };
 
-    explicit LRBuilder(const Grammar& grammar) : grammar_(grammar) {}
+    explicit LalrBuilder(const Grammar& grammar) : grammar_(grammar) {}
 
     void build();
     unsigned getStateCount() const { return static_cast<unsigned>(states_.size()); }

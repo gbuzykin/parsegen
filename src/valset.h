@@ -70,17 +70,22 @@ class ValueSet {
         return set_[nword(v)] & bitmask(v);
     }
 
-    void clear() { set_.fill(0); }
-    void addValue(unsigned v) {
+    ValueSet& clear() {
+        set_.fill(0);
+        return *this;
+    }
+    ValueSet& addValue(unsigned v) {
         assert(v <= kMaxValue);
         set_[nword(v)] |= bitmask(v);
+        return *this;
     }
-    void addValues(unsigned from, unsigned to);
-    void removeValue(unsigned v) {
+    ValueSet& addValues(unsigned from, unsigned to);
+    ValueSet& removeValue(unsigned v) {
         assert(v <= kMaxValue);
         set_[nword(v)] &= ~bitmask(v);
+        return *this;
     }
-    void removeValues(unsigned from, unsigned to);
+    ValueSet& removeValues(unsigned from, unsigned to);
 
     ValueSet& operator|=(const ValueSet& rhs);
     ValueSet& operator&=(const ValueSet& rhs);
