@@ -23,9 +23,9 @@ class Logger {
     MsgType getType() const { return type_; }
     const std::string& getMessage() const { return msg_; }
 
-    template<typename... Ts>
-    LoggerTy& format(std::string_view fmt, const Ts&... args) {
-        msg_ = uxs::format(fmt, args...);
+    template<typename... Args>
+    LoggerTy& format(uxs::format_string<Args...> fmt, const Args&... args) {
+        msg_ = uxs::vformat(fmt.get(), uxs::make_format_args(args...));
         return static_cast<LoggerTy&>(*this);
     }
 
