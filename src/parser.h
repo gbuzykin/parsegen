@@ -55,7 +55,7 @@ class Parser {
     char* first_ = nullptr;
     char* last_ = nullptr;
     unsigned ln_ = 1, col_ = 1;
-    uxs::basic_inline_dynbuffer<int, 1> state_stack_;
+    uxs::inline_basic_dynbuffer<int, 1> state_stack_;
     TokenInfo tkn_;
     Grammar& grammar_;
     std::unordered_map<std::string_view, std::string_view> options_;

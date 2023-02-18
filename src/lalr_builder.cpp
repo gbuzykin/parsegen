@@ -451,7 +451,7 @@ void LalrBuilder::buildAetaTable() {
 void LalrBuilder::printFirstTable(uxs::iobuf& outp) {
     outp.write("---=== FIRST table : ===---").endl().endl();
     for (unsigned n = 0; n < first_tbl_.size(); ++n) {
-        uxs::fprint(outp, "    FIRST({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
+        uxs::print(outp, "    FIRST({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
         bool colon = false;
         for (unsigned symb : first_tbl_[n]) {
             if (colon) { outp.write(", "); }
@@ -466,7 +466,7 @@ void LalrBuilder::printFirstTable(uxs::iobuf& outp) {
 void LalrBuilder::printAetaTable(uxs::iobuf& outp) {
     outp.write("---=== Aeta table : ===---").endl().endl();
     for (unsigned n = 0; n < Aeta_tbl_.size(); ++n) {
-        uxs::fprint(outp, "    Aeta({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
+        uxs::print(outp, "    Aeta({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
         bool colon = false;
         for (unsigned symb : Aeta_tbl_[n]) {
             if (colon) { outp.write(", "); }
@@ -481,9 +481,9 @@ void LalrBuilder::printAetaTable(uxs::iobuf& outp) {
 void LalrBuilder::printStates(uxs::iobuf& outp) {
     outp.write("---=== LALR analyser states : ===---").endl().endl();
     for (unsigned n_state = 0; n_state < states_.size(); n_state++) {
-        uxs::fprintln(outp, "State {}:", n_state);
+        uxs::println(outp, "State {}:", n_state);
         for (const auto& [pos, la_set] : states_[n_state]) {
-            uxs::fprint(outp, "    ({}) ", pos.n_prod);
+            uxs::print(outp, "    ({}) ", pos.n_prod);
             grammar_.printProduction(outp, pos.n_prod, pos.pos);
             outp.write(" [");
             for (unsigned symb : la_set.la) { outp.put(' ').write(grammar_.symbolText(symb)); }
@@ -494,11 +494,11 @@ void LalrBuilder::printStates(uxs::iobuf& outp) {
         auto print_action = [&grammar = grammar_, &outp](unsigned token, const Action& action) {
             outp.write("    ").write(grammar.symbolText(token)).write(", ");
             switch (action.type) {
-                case Action::Type::kShift: uxs::fprintln(outp, "shift and goto state {}", action.val); break;
+                case Action::Type::kShift: uxs::println(outp, "shift and goto state {}", action.val); break;
                 case Action::Type::kError: outp.write("error").endl(); break;
                 case Action::Type::kReduce: {
                     if (action.val > 0) {
-                        uxs::fprintln(outp, "reduce using rule {}", action.val);
+                        uxs::println(outp, "reduce using rule {}", action.val);
                     } else {
                         outp.write("accept").endl();
                     }
@@ -517,7 +517,7 @@ void LalrBuilder::printStates(uxs::iobuf& outp) {
             auto it = std::find_if(
                 compr_goto_tbl_.data.begin() + compr_goto_tbl_.index[n], compr_goto_tbl_.data.end(),
                 [n_state](const auto& item) { return item.first < 0 || item.first == static_cast<int>(n_state); });
-            uxs::fprintln(outp, "    {}, goto state {}", grammar_.getSymbolName(makeNontermId(n)), it->second);
+            uxs::println(outp, "    {}, goto state {}", grammar_.getSymbolName(makeNontermId(n)), it->second);
         }
         outp.endl();
     }

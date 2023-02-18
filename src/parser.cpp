@@ -34,7 +34,7 @@ bool Parser::parse() {
     last_ = text_.get() + n_read;
     current_line_ = getNextLine(first_, last_);
 
-    state_stack_.reserve_at_curr(256);
+    state_stack_.reserve(256);
     state_stack_.push_back(lex_detail::sc_initial);
 
     // Add default start condition
@@ -320,7 +320,7 @@ int Parser::lex() {
                 break;
             } else if (stack_limitation) {
                 // enlarge state stack and continue analysis
-                state_stack_.reserve_at_curr(llen);
+                state_stack_.reserve(llen);
                 first = last;
             } else {
                 int sc = state_stack_.back();
@@ -345,17 +345,17 @@ int Parser::lex() {
             case lex_detail::pat_escape_v: escape = '\v'; break;
             case lex_detail::pat_escape_other: escape = lexeme[1]; break;
             case lex_detail::pat_escape_hex: {
-                escape = uxs::dig_v<16>(lexeme[2]);
-                if (llen > 3) { *escape = (*escape << 4) + uxs::dig_v<16>(lexeme[3]); }
+                escape = uxs::dig_v(lexeme[2]);
+                if (llen > 3) { *escape = (*escape << 4) + uxs::dig_v(lexeme[3]); }
                 if (!*escape) {
                     print_zero_escape_char_msg();
                     return tt_lexical_error;
                 }
             } break;
             case lex_detail::pat_escape_oct: {
-                escape = uxs::dig_v<8>(lexeme[1]);
-                if (llen > 2) { *escape = (*escape << 3) + uxs::dig_v<8>(lexeme[2]); }
-                if (llen > 3) { *escape = (*escape << 3) + uxs::dig_v<8>(lexeme[3]); }
+                escape = uxs::dig_v(lexeme[1]);
+                if (llen > 2) { *escape = (*escape << 3) + uxs::dig_v(lexeme[2]); }
+                if (llen > 3) { *escape = (*escape << 3) + uxs::dig_v(lexeme[3]); }
                 if (!*escape) {
                     print_zero_escape_char_msg();
                     return tt_lexical_error;
@@ -379,7 +379,7 @@ int Parser::lex() {
 
             // ------ symbols
             case lex_detail::pat_symb: {
-                tkn_.val = 0;
+                tkn_.val = 0u;
                 state_stack_.push_back(lex_detail::sc_symb);
             } break;
             case lex_detail::pat_symb_other: {
