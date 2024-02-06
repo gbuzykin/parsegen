@@ -4,7 +4,7 @@
 
 #include "uxs/algorithm.h"
 #include "uxs/format.h"
-#include "uxs/io/ostringbuf.h"
+#include "uxs/io/oflatbuf.h"
 
 #include <optional>
 
@@ -125,9 +125,9 @@ void LalrBuilder::build() {
 
     // Generate actions :
     auto get_prod_text = [this](unsigned n_prod) {
-        uxs::ostringbuf production_text;
+        uxs::oflatbuf production_text;
         grammar_.printProduction(production_text, n_prod, std::nullopt);
-        return production_text.str();
+        return std::string(production_text.data(), production_text.size());
     };
 
     for (unsigned n_state = 0; n_state < states_.size(); ++n_state) {
@@ -159,14 +159,14 @@ void LalrBuilder::build() {
                         }
                     } else {
                         logger::warning(grammar_.getFileName())
-                            .format("shift/reduce conflict for `{}` production before `{}` look-ahead token",
-                                    get_prod_text(pos.n_prod), grammar_.symbolText(symb));
+                            .println("shift/reduce conflict for `{}` production before `{}` look-ahead token",
+                                     get_prod_text(pos.n_prod), grammar_.symbolText(symb));
                         ++sr_conflict_count_;
                     }
                 } else {  // Reduce-Reduce conflict
                     logger::warning(grammar_.getFileName())
-                        .format("reduce/reduce conflict for `{}` and `{}` productions before `{}` look-ahead token",
-                                get_prod_text(action.val), get_prod_text(pos.n_prod), grammar_.symbolText(symb));
+                        .println("reduce/reduce conflict for `{}` and `{}` productions before `{}` look-ahead token",
+                                 get_prod_text(action.val), get_prod_text(pos.n_prod), grammar_.symbolText(symb));
                     ++rr_conflict_count_;
                 }
             }
@@ -247,7 +247,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
 
     row_size_avg /= row_count;
 
-    logger::info(grammar_.getFileName()).format(" - action table row size: max {}, avg {}", row_size_max, row_size_avg);
+    logger::info(grammar_.getFileName()).println(" - action table row size: max {}, avg {}", row_size_max, row_size_avg);
 
     // Compress goto table :
 
@@ -283,7 +283,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
 
     row_size_avg /= row_count;
 
-    logger::info(grammar_.getFileName()).format(" - goto table row size: max {}, avg {}", row_size_max, row_size_avg);
+    logger::info(grammar_.getFileName()).println(" - goto table row size: max {}, avg {}", row_size_max, row_size_avg);
 }
 
 ValueSet LalrBuilder::calcFirst(const std::vector<unsigned>& seq, unsigned pos) {
@@ -449,58 +449,59 @@ void LalrBuilder::buildAetaTable() {
 }
 
 void LalrBuilder::printFirstTable(uxs::iobuf& outp) {
-    outp.write("---=== FIRST table : ===---").endl().endl();
+    uxs::println(outp, "---=== FIRST table : ===---").endl();
     for (unsigned n = 0; n < first_tbl_.size(); ++n) {
         uxs::print(outp, "    FIRST({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
         bool colon = false;
         for (unsigned symb : first_tbl_[n]) {
-            if (colon) { outp.write(", "); }
+            if (colon) { uxs::print(outp, ", "); }
             outp.write(grammar_.symbolText(symb));
             colon = true;
         }
-        outp.write(" }").endl();
+        uxs::println(outp, " }}");
     }
     outp.endl();
 }
 
 void LalrBuilder::printAetaTable(uxs::iobuf& outp) {
-    outp.write("---=== Aeta table : ===---").endl().endl();
+    uxs::println(outp, "---=== Aeta table : ===---").endl();
     for (unsigned n = 0; n < Aeta_tbl_.size(); ++n) {
         uxs::print(outp, "    Aeta({}) = {{ ", grammar_.getSymbolName(makeNontermId(n)));
         bool colon = false;
         for (unsigned symb : Aeta_tbl_[n]) {
-            if (colon) { outp.write(", "); }
+            if (colon) { uxs::print(outp, ", "); }
             outp.write(grammar_.getSymbolName(makeNontermId(symb)));
             colon = true;
         }
-        outp.write(" }").endl();
+        uxs::println(outp, " }}");
     }
     outp.endl();
 }
 
 void LalrBuilder::printStates(uxs::iobuf& outp) {
-    outp.write("---=== LALR analyser states : ===---").endl().endl();
+    uxs::println(outp, "---=== LALR analyser states : ===---").endl();
     for (unsigned n_state = 0; n_state < states_.size(); n_state++) {
         uxs::println(outp, "State {}:", n_state);
         for (const auto& [pos, la_set] : states_[n_state]) {
             uxs::print(outp, "    ({}) ", pos.n_prod);
             grammar_.printProduction(outp, pos.n_prod, pos.pos);
-            outp.write(" [");
+            uxs::print(outp, " [");
             for (unsigned symb : la_set.la) { outp.put(' ').write(grammar_.symbolText(symb)); }
-            outp.write(" ]").endl();
+            uxs::println(outp, " ]");
         }
         outp.endl();
 
         auto print_action = [&grammar = grammar_, &outp](unsigned token, const Action& action) {
-            outp.write("    ").write(grammar.symbolText(token)).write(", ");
+            uxs::print(outp, "    ").write(grammar.symbolText(token));
+            uxs::print(outp, ", ");
             switch (action.type) {
                 case Action::Type::kShift: uxs::println(outp, "shift and goto state {}", action.val); break;
-                case Action::Type::kError: outp.write("error").endl(); break;
+                case Action::Type::kError: uxs::println(outp, "error"); break;
                 case Action::Type::kReduce: {
                     if (action.val > 0) {
                         uxs::println(outp, "reduce using rule {}", action.val);
                     } else {
-                        outp.write("accept").endl();
+                        uxs::println(outp, "accept");
                     }
                 } break;
             }

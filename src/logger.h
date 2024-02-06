@@ -11,35 +11,34 @@ class Parser;
 
 namespace logger {
 
-enum class MsgType { kDebug = 0, kInfo, kWarning, kError, kFatal };
+enum class MsgType : unsigned { kDebug = 0, kInfo, kWarning, kError, kFatal };
 
 template<typename LoggerTy>
 class Logger {
  public:
     explicit Logger(MsgType type) : type_(type) {}
-    Logger(const Logger&) = delete;
-    Logger& operator=(const Logger&) = delete;
 
     MsgType getType() const { return type_; }
-    const std::string& getMessage() const { return msg_; }
+    std::string_view getMessage() const { return std::string_view(buf_.data(), buf_.size()); }
+    void clear() { buf_.clear(); };
 
     template<typename... Args>
-    LoggerTy& format(uxs::format_string<Args...> fmt, const Args&... args) {
-        msg_ = uxs::vformat(fmt.get(), uxs::make_format_args(args...));
-        return static_cast<LoggerTy&>(*this);
+    LoggerTy& println(uxs::format_string<Args...> fmt, const Args&... args) {
+        uxs::basic_vformat<uxs::membuffer>(buf_, fmt.get(), uxs::make_format_args(args...));
+        return static_cast<LoggerTy&>(*this).show();
     }
 
  private:
     MsgType type_;
-    std::string msg_;
+    uxs::inline_dynbuffer buf_;
 };
 
 class LoggerSimple : public Logger<LoggerSimple> {
  public:
     explicit LoggerSimple(MsgType type) : Logger<LoggerSimple>(type), header_("parsegen") {}
     LoggerSimple(MsgType type, std::string_view hdr) : Logger<LoggerSimple>(type), header_(hdr) {}
-    ~LoggerSimple() { printMessage(getMessage()); }
-    void printMessage(std::string_view msg);
+
+    LoggerSimple& show();
 
  private:
     std::string_view header_;
@@ -49,8 +48,8 @@ class LoggerExtended : public Logger<LoggerExtended> {
  public:
     LoggerExtended(MsgType type, const Parser& parser, const TokenLoc& l)
         : Logger<LoggerExtended>(type), parser_(parser), loc_(l) {}
-    ~LoggerExtended() { printMessage(getMessage()); }
-    void printMessage(std::string_view msg);
+
+    LoggerExtended& show();
 
  private:
     const Parser& parser_;
