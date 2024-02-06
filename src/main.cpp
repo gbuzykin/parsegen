@@ -36,13 +36,13 @@ template<typename Iter>
 void outputArray(uxs::iobuf& outp, std::string_view array_name, Iter from, Iter to) {
     if (from == to) { return; }
     if constexpr (std::is_constructible<std::string_view, decltype(*from)>::value) {
-        outp.write("\nstatic const char* ");
+        uxs::print(outp, "\nstatic const char* ");
     } else {
-        outp.write("\nstatic int ");
+        uxs::print(outp, "\nstatic int ");
     }
-    uxs::println(outp, "{}[{}] = {{", array_name, std::distance(from, to));
+    uxs::print(outp, "{}[{}] = {{\n", array_name, std::distance(from, to));
     outputData(outp, from, to, 4);
-    outp.write("};\n");
+    uxs::print(outp, "}};\n");
 }
 
 void outputParserEngine(uxs::iobuf& outp) {
@@ -107,30 +107,30 @@ int main(int argc, char** argv) {
         auto parse_result = cli->parse(argc, argv);
         if (show_help) {
             for (auto const* node = parse_result.node; node; node = node->get_parent()) {
-                if (node->get_type() == uxs::cli::node_type::kCommand) {
+                if (node->get_type() == uxs::cli::node_type::command) {
                     uxs::stdbuf::out.write(static_cast<const uxs::cli::basic_command<char>&>(*node).make_man_page(true));
                     break;
                 }
             }
             return 0;
         } else if (show_version) {
-            uxs::stdbuf::out.write(XSTR(VERSION)).endl();
+            uxs::println(uxs::stdbuf::out, "{}", XSTR(VERSION));
             return 0;
-        } else if (parse_result.status != uxs::cli::parsing_status::kOk) {
+        } else if (parse_result.status != uxs::cli::parsing_status::ok) {
             switch (parse_result.status) {
-                case uxs::cli::parsing_status::kUnknownOption: {
-                    logger::fatal().format("unknown command line option `{}`", argv[parse_result.arg_count]);
+                case uxs::cli::parsing_status::unknown_option: {
+                    logger::fatal().println("unknown command line option `{}`", argv[parse_result.arg_count]);
                 } break;
-                case uxs::cli::parsing_status::kInvalidValue: {
+                case uxs::cli::parsing_status::invalid_value: {
                     if (parse_result.arg_count < argc) {
-                        logger::fatal().format("invalid command line argument `{}`", argv[parse_result.arg_count]);
+                        logger::fatal().println("invalid command line argument `{}`", argv[parse_result.arg_count]);
                     } else {
-                        logger::fatal().format("expected command line argument after `{}`",
-                                               argv[parse_result.arg_count - 1]);
+                        logger::fatal().println("expected command line argument after `{}`",
+                                                argv[parse_result.arg_count - 1]);
                     }
                 } break;
-                case uxs::cli::parsing_status::kUnspecifiedValue: {
-                    if (input_file_name.empty()) { logger::fatal().format("no input file specified"); }
+                case uxs::cli::parsing_status::unspecified_value: {
+                    if (input_file_name.empty()) { logger::fatal().println("no input file specified"); }
                 } break;
                 default: break;
             }
@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
 
         uxs::filebuf ifile(input_file_name.c_str(), "r");
         if (!ifile) {
-            logger::fatal().format("could not open input file `{}`", input_file_name);
+            logger::fatal().println("could not open input file `{}`", input_file_name);
             return -1;
         }
 
@@ -149,13 +149,13 @@ int main(int argc, char** argv) {
 
         LalrBuilder lr_builder(grammar);
 
-        logger::info(input_file_name).format("\033[1;34mbuilding analyzer...\033[0m");
+        logger::info(input_file_name).println("\033[1;34mbuilding analyzer...\033[0m");
         lr_builder.build();
 
         logger::info(input_file_name)
-            .format("{}done:\033[0m {} shift/reduce, {} reduce/reduce conflict(s) found",
-                    !lr_builder.getSRConflictCount() && !lr_builder.getRRConflictCount() ? "\033[1;32m" : "\033[1;33m",
-                    lr_builder.getSRConflictCount(), lr_builder.getRRConflictCount());
+            .println("{}done:\033[0m {} shift/reduce, {} reduce/reduce conflict(s) found",
+                     !lr_builder.getSRConflictCount() && !lr_builder.getRRConflictCount() ? "\033[1;32m" : "\033[1;33m",
+                     lr_builder.getSRConflictCount(), lr_builder.getRRConflictCount());
 
         if (!report_file_name.empty()) {
             if (uxs::filebuf ofile(report_file_name.c_str(), "w"); ofile) {
@@ -167,15 +167,15 @@ int main(int argc, char** argv) {
                 lr_builder.printAetaTable(ofile);
                 lr_builder.printStates(ofile);
             } else {
-                logger::error().format("could not open report file `{}`", report_file_name);
+                logger::error().println("could not open report file `{}`", report_file_name);
             }
         }
 
         if (uxs::filebuf ofile(defs_file_name.c_str(), "w"); ofile) {
-            ofile.write("/* Parsegen autogenerated definition file - do not edit! */\n");
-            ofile.write("/* clang-format off */\n");
-            ofile.write("\nenum {\n");
-            uxs::println(ofile, "    predef_tt_error = {},", static_cast<int>(kTokenError));
+            uxs::print(ofile, "/* Parsegen autogenerated definition file - do not edit! */\n");
+            uxs::print(ofile, "/* clang-format off */\n");
+            uxs::print(ofile, "\nenum {{\n");
+            uxs::print(ofile, "    predef_tt_error = {},\n", static_cast<int>(kTokenError));
             unsigned last_tt_id = kTokenError;
             for (const auto& [name, id] : grammar.getTokenList()) {
                 uxs::print(ofile, "    tt_{}", name);
@@ -183,12 +183,12 @@ int main(int argc, char** argv) {
                 ofile.put(',').put('\n');
                 last_tt_id = id;
             }
-            ofile.write("    total_token_count\n");
-            ofile.write("};\n");
+            uxs::print(ofile, "    total_token_count\n");
+            uxs::print(ofile, "}};\n");
 
-            ofile.write("\nenum {\n");
-            ofile.write("    predef_act_shift = 0,\n");
-            ofile.write("    predef_act_reduce = 1,\n");
+            uxs::print(ofile, "\nenum {{\n");
+            uxs::print(ofile, "    predef_act_shift = 0,\n");
+            uxs::print(ofile, "    predef_act_reduce = 1,\n");
             unsigned last_act_id = 0;
             for (const auto& [name, id] : grammar.getActionList()) {
                 uxs::print(ofile, "    act_{}", name);
@@ -196,24 +196,24 @@ int main(int argc, char** argv) {
                 ofile.put(',').put('\n');
                 last_act_id = id;
             }
-            ofile.write("    total_action_count\n");
-            ofile.write("};\n");
+            uxs::print(ofile, "    total_action_count\n");
+            uxs::print(ofile, "}};\n");
 
             if (const auto& start_conditions = grammar.getStartConditions(); !start_conditions.empty()) {
-                ofile.write("\nenum {\n");
+                uxs::print(ofile, "\nenum {{\n");
                 if (start_conditions.size() > 1) {
-                    uxs::println(ofile, "    sc_{} = 0,", start_conditions[0].first);
+                    uxs::print(ofile, "    sc_{} = 0,\n", start_conditions[0].first);
                     for (size_t i = 1; i < start_conditions.size() - 1; ++i) {
-                        uxs::println(ofile, "    sc_{},", start_conditions[i].first);
+                        uxs::print(ofile, "    sc_{},\n", start_conditions[i].first);
                     }
-                    uxs::println(ofile, "    sc_{}", start_conditions[start_conditions.size() - 1].first);
+                    uxs::print(ofile, "    sc_{}\n", start_conditions[start_conditions.size() - 1].first);
                 } else {
-                    uxs::println(ofile, "    sc_{} = 0", start_conditions[0].first);
+                    uxs::print(ofile, "    sc_{} = 0\n", start_conditions[0].first);
                 }
-                ofile.write("};\n");
+                uxs::print(ofile, "}};\n");
             }
         } else {
-            logger::error().format("could not open output file `{}`", defs_file_name);
+            logger::error().println("could not open output file `{}`", defs_file_name);
         }
 
         const auto& action_table = lr_builder.getCompressedActionTable();
@@ -244,8 +244,8 @@ int main(int argc, char** argv) {
         }
 
         if (uxs::filebuf ofile(analyzer_file_name.c_str(), "w"); ofile) {
-            ofile.write("/* Parsegen autogenerated analyzer file - do not edit! */\n");
-            ofile.write("/* clang-format off */\n");
+            uxs::print(ofile, "/* Parsegen autogenerated analyzer file - do not edit! */\n");
+            uxs::print(ofile, "/* clang-format off */\n");
             outputArray(ofile, "action_idx", action_idx.begin(), action_idx.end());
             outputArray(ofile, "action_list", action_list.begin(), action_list.end());
 
@@ -262,10 +262,10 @@ int main(int argc, char** argv) {
             outputArray(ofile, "goto_list", goto_list.begin(), goto_list.end());
             outputParserEngine(ofile);
         } else {
-            logger::error().format("could not open output file `{}`", analyzer_file_name);
+            logger::error().println("could not open output file `{}`", analyzer_file_name);
         }
 
         return 0;
-    } catch (const std::exception& e) { logger::fatal().format("exception caught: {}", e.what()); }
+    } catch (const std::exception& e) { logger::fatal().println("exception caught: {}", e.what()); }
     return -1;
 }

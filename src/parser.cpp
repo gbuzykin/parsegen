@@ -22,8 +22,8 @@ Parser::Parser(uxs::iobuf& input, std::string file_name, Grammar& grammar)
     : input_(input), file_name_(std::move(file_name)), grammar_(grammar) {}
 
 bool Parser::parse() {
-    std::streampos pos = input_.seek(0, uxs::seekdir::kEnd);
-    if (pos < 0) { return false; }
+    auto pos = input_.seek(0, uxs::seekdir::end);
+    if (pos == uxs::iobuf::traits_type::npos()) { return false; }
     size_t file_sz = static_cast<size_t>(pos);
     text_ = std::make_unique<char[]>(file_sz);
 
@@ -51,7 +51,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addStartCondition(std::string(std::get<std::string_view>(tkn_.val)))) {
-                    logger::error(*this, tkn_.loc).format("start condition is already defined");
+                    logger::error(*this, tkn_.loc).println("start condition is already defined");
                     return false;
                 }
                 tt = lex();
@@ -62,7 +62,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addToken(std::string(std::get<std::string_view>(tkn_.val))).second) {
-                    logger::error(*this, tkn_.loc).format("token is already defined");
+                    logger::error(*this, tkn_.loc).println("token is already defined");
                     return false;
                 }
                 tt = lex();
@@ -73,7 +73,7 @@ bool Parser::parse() {
                     return false;
                 }
                 if (!grammar_.addAction(std::string(std::get<std::string_view>(tkn_.val))).second) {
-                    logger::error(*this, tkn_.loc).format("action is already defined");
+                    logger::error(*this, tkn_.loc).println("action is already defined");
                     return false;
                 }
                 tt = lex();
@@ -101,7 +101,7 @@ bool Parser::parse() {
                     if (id == 0) { break; }
 
                     if (!grammar_.setTokenPrecAndAssoc(id, prec, assoc)) {
-                        logger::error(*this, tkn_.loc).format("token precedence is already defined");
+                        logger::error(*this, tkn_.loc).println("token precedence is already defined");
                         return false;
                     }
                 }
@@ -131,7 +131,7 @@ bool Parser::parse() {
         if ((tt = lex()) == tt_id) {
             unsigned lhs = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
             if (!isNonterm(lhs)) {
-                logger::error(*this, tkn_.loc).format("name is already used for tokens");
+                logger::error(*this, tkn_.loc).println("name is already used for tokens");
                 return false;
             }
 
@@ -145,7 +145,7 @@ bool Parser::parse() {
 
                 if (!grammar_.setStartConditionProd(std::get<std::string_view>(tkn_.val),
                                                     grammar_.getProductionCount())) {
-                    logger::error(*this, tkn_.loc).format("undefined start condition");
+                    logger::error(*this, tkn_.loc).println("undefined start condition");
                     return false;
                 }
 
@@ -178,7 +178,7 @@ bool Parser::parse() {
                                         found_id && isToken(*found_id)) {
                                         id = *found_id;
                                     } else {
-                                        logger::error(*this, tkn_.loc).format("undefined token");
+                                        logger::error(*this, tkn_.loc).println("undefined token");
                                         return false;
                                     }
                                 } break;
@@ -190,14 +190,14 @@ bool Parser::parse() {
 
                             prec = grammar_.getTokenInfo(id).prec;
                             if (prec < 0) {
-                                logger::error(*this, tkn_.loc).format("token precedence is not defined");
+                                logger::error(*this, tkn_.loc).println("token precedence is not defined");
                                 return false;
                             }
                         } break;
                         case tt_id: {  // Nonterminal
                             auto id = grammar_.addNonterm(std::string(std::get<std::string_view>(tkn_.val))).first;
                             if (!isNonterm(id)) {
-                                logger::error(*this, tkn_.loc).format("name is already used for tokens or actions");
+                                logger::error(*this, tkn_.loc).println("name is already used for tokens or actions");
                                 return false;
                             }
                             rhs.push_back(id);
@@ -212,7 +212,7 @@ bool Parser::parse() {
                                 found_id && isToken(*found_id)) {
                                 rhs.push_back(*found_id);
                             } else {
-                                logger::error(*this, tkn_.loc).format("undefined token");
+                                logger::error(*this, tkn_.loc).println("undefined token");
                                 return false;
                             }
                         } break;
@@ -224,7 +224,7 @@ bool Parser::parse() {
                                 found_id && isAction(*found_id)) {
                                 rhs.push_back(*found_id);
                             } else {
-                                logger::error(*this, tkn_.loc).format("undefined action");
+                                logger::error(*this, tkn_.loc).println("undefined action");
                                 return false;
                             }
                         } break;
@@ -234,7 +234,7 @@ bool Parser::parse() {
                                 has_start_condition = false;
                                 if (rhs.empty() || !isToken(rhs.back())) {
                                     logger::error(*this, tkn_.loc)
-                                        .format("start production must be terminated with a token");
+                                        .println("start production must be terminated with a token");
                                     return false;
                                 }
                             }
@@ -251,7 +251,7 @@ bool Parser::parse() {
     } while (tt != tt_sep);
 
     if (!grammar_.getProductionCount()) {
-        logger::error(file_name_).format("no productions defined");
+        logger::error(file_name_).println("no productions defined");
         return false;
     }
 
@@ -263,11 +263,11 @@ bool Parser::parse() {
         const auto& prod = grammar_.getProductionInfo(sc.second);
         if (prod.rhs.empty() || !isToken(prod.rhs.back())) {
             logger::error(file_name_)
-                .format("implicit start production for `{}` start condition must be terminated with a token", sc.first);
+                .println("implicit start production for `{}` start condition must be terminated with a token", sc.first);
             return false;
         }
         if (nonterm_used.contains(getIndex(prod.lhs))) {
-            logger::error(file_name_).format("left part of start production must not be used in other productions");
+            logger::error(file_name_).println("left part of start production must not be used in other productions");
             return false;
         }
     }
@@ -276,12 +276,12 @@ bool Parser::parse() {
         if (!uxs::any_of(start_conditions, [&grammar = grammar_, n](const auto& sc) {
                 return grammar.getProductionInfo(sc.second).lhs == makeNontermId(n);
             })) {
-            logger::warning(file_name_).format("unused nonterminal `{}`", grammar_.getSymbolName(makeNontermId(n)));
+            logger::warning(file_name_).println("unused nonterminal `{}`", grammar_.getSymbolName(makeNontermId(n)));
         }
     }
     if (ValueSet undef = nonterm_used - nonterm_defined; !undef.empty()) {
         logger::error(file_name_)
-            .format("undefined nonterminal `{}`", grammar_.getSymbolName(makeNontermId(*undef.begin())));
+            .println("undefined nonterminal `{}`", grammar_.getSymbolName(makeNontermId(*undef.begin())));
         return false;
     }
     return true;
@@ -291,12 +291,12 @@ int Parser::lex() {
     char *str_start = nullptr, *str_end = nullptr;
     tkn_.loc = {ln_, col_, col_};
 
-    auto print_unterm_token_msg = [this] { logger::error(*this, tkn_.loc).format("unterminated token"); };
+    auto print_unterm_token_msg = [this] { logger::error(*this, tkn_.loc).println("unterminated token"); };
     auto print_zero_escape_char_msg = [this] {
-        logger::error(*this, tkn_.loc).format("zero escape character is not allowed");
+        logger::error(*this, tkn_.loc).println("zero escape character is not allowed");
     };
     auto print_multiple_characters_not_allowed_msg = [this] {
-        logger::error(*this, tkn_.loc).format("multiple characters are not allowed");
+        logger::error(*this, tkn_.loc).println("multiple characters are not allowed");
     };
 
     while (true) {
@@ -463,5 +463,5 @@ void Parser::logSyntaxError(int tt) const {
         case tt_lexical_error: return;
         default: msg = "unexpected token"; break;
     }
-    logger::error(*this, tkn_.loc).format(uxs::make_runtime_string(msg));
+    logger::error(*this, tkn_.loc).println(uxs::make_runtime_string(msg));
 }

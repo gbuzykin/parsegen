@@ -77,17 +77,21 @@ std::string_view typeString(MsgType type) {
 
 }  // namespace
 
-void LoggerSimple::printMessage(std::string_view msg) {
-    uxs::println(uxs::stdbuf::log, "\033[1;37m{}{}{}", header_, typeString(getType()), msg);
+LoggerSimple& LoggerSimple::show() {
+    uxs::println(uxs::stdbuf::log, "\033[1;37m{}{}{}", header_, typeString(getType()), getMessage());
+    clear();
+    return *this;
 }
 
-void LoggerExtended::printMessage(std::string_view msg) {
+LoggerExtended& LoggerExtended::show() {
     std::string n_line = uxs::to_string(loc_.ln);
     uxs::println(uxs::stdbuf::log, "\033[1;37m{}:{}:{}{}{}", parser_.getFileName(), n_line, loc_.col_first,
-                 typeString(getType()), msg);
+                 typeString(getType()), getMessage());
 
     std::string left_padding(n_line.size(), ' ');
     auto [tab2space_line, mark] = markInputLine(parser_.getCurrentLine(), loc_.col_first, loc_.col_last);
     uxs::println(uxs::stdbuf::log, " {} | {}", n_line, tab2space_line);
     uxs::println(uxs::stdbuf::log, " {} | \033[0;32m{}\033[0m", left_padding, mark);
+    clear();
+    return *this;
 }

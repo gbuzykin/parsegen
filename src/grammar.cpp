@@ -122,16 +122,16 @@ std::vector<std::pair<std::string_view, unsigned>> Grammar::getActionList() {
 }
 
 void Grammar::printTokens(uxs::iobuf& outp) const {
-    outp.write("---=== Tokens : ===---").endl().endl();
+    uxs::println(outp, "---=== Tokens : ===---").endl();
     for (unsigned id = 0; id < static_cast<unsigned>(tokens_.size()); ++id) {
         if (tokens_[id].is_used) {
             uxs::print(outp, "    {} {}", symbolText(id), id);
             if (tokens_[id].prec >= 0) {
                 uxs::print(outp, " %prec {}", tokens_[id].prec);
                 switch (tokens_[id].assoc) {
-                    case Assoc::kNone: outp.write(" %nonassoc"); break;
-                    case Assoc::kLeft: outp.write(" %left"); break;
-                    case Assoc::kRight: outp.write(" %right"); break;
+                    case Assoc::kNone: uxs::print(outp, " %nonassoc"); break;
+                    case Assoc::kLeft: uxs::print(outp, " %left"); break;
+                    case Assoc::kRight: uxs::print(outp, " %right"); break;
                 }
             }
             outp.endl();
@@ -141,7 +141,7 @@ void Grammar::printTokens(uxs::iobuf& outp) const {
 }
 
 void Grammar::printNonterms(uxs::iobuf& outp) const {
-    outp.write("---=== Nonterminals : ===---").endl().endl();
+    uxs::println(outp, "---=== Nonterminals : ===---").endl();
     for (unsigned id = makeNontermId(0); id < makeNontermId(nonterm_count_); ++id) {
         uxs::println(outp, "    {} {}", getSymbolName(id), id);
     }
@@ -149,7 +149,7 @@ void Grammar::printNonterms(uxs::iobuf& outp) const {
 }
 
 void Grammar::printActions(uxs::iobuf& outp) const {
-    outp.write("---=== Actions : ===---").endl().endl();
+    uxs::println(outp, "---=== Actions : ===---").endl();
     for (unsigned id = makeActionId(1); id < makeActionId(action_count_); ++id) {
         uxs::println(outp, "    {} {}", getActionName(id), id);
     }
@@ -157,7 +157,7 @@ void Grammar::printActions(uxs::iobuf& outp) const {
 }
 
 void Grammar::printGrammar(uxs::iobuf& outp) const {
-    outp.write("---=== Grammar : ===---").endl().endl();
+    uxs::println(outp, "---=== Grammar : ===---").endl();
     for (unsigned n_prod = 0; n_prod < static_cast<unsigned>(productions_.size()); ++n_prod) {
         uxs::print(outp, "    ({}) ", n_prod);
         printProduction(outp, n_prod, std::nullopt);
@@ -174,7 +174,7 @@ void Grammar::printProduction(uxs::iobuf& outp, unsigned n_prod, std::optional<u
     uxs::print(outp, "{} ->", getSymbolName(prod.lhs));
     if (pos) {
         for (size_t i = 0; i < *pos; ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
-        outp.write(" .");
+        uxs::print(outp, " .");
         for (size_t i = *pos; i < prod.rhs.size(); ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
     } else {
         for (unsigned id : prod.rhs) { outp.put(' ').write(decoratedSymbolText(id)); }
