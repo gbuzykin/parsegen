@@ -39,21 +39,20 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
 
     const unsigned tab_size = 4;
     unsigned col = 0, mark_limits[2] = {0, 0};
-    for (auto p = line.begin(), p1 = p; p != line.end(); p = p1) {
-        unsigned byte_count = uxs::get_utf8_byte_count(*p);
-        p1 = line.end() - p > byte_count ? p + byte_count : line.end();
-        if (*p == '\t') {  // Convert tab into spaces
+    std::uint32_t code = 0;
+    for (auto p = line.begin(), next = p; uxs::from_utf8(p, line.end(), next, code) != 0; p = next) {
+        if (code == '\t') {  // Convert tab into spaces
             auto align_up = [](unsigned v, unsigned base) { return (v + base - 1) & ~(base - 1); };
-            unsigned tab_pos = align_up(col + 1, tab_size);
+            const unsigned tab_pos = align_up(col + 1, tab_size);
             while (col < tab_pos) { tab2space_line.push_back(' '), ++col; }
-        } else if (uxs::is_space(*p)) {
+        } else if (uxs::is_space(code)) {
             tab2space_line.push_back(' '), ++col;
         } else {
-            while (p < p1) { tab2space_line.push_back(*p++); }
+            do { tab2space_line.push_back(*p++); } while (p != next);
             ++col;
         }
-        if (p1 <= p_from) { mark_limits[0] = col; }
-        if (p1 <= p_to) { mark_limits[1] = col; }
+        if (next <= p_from) { mark_limits[0] = col; }
+        if (next <= p_to) { mark_limits[1] = col; }
     }
 
     std::string mark;
@@ -71,7 +70,6 @@ std::string_view typeString(MsgType type) {
         case MsgType::kWarning: return ": \033[0;35mwarning: \033[0m";
         case MsgType::kError: return ": \033[0;31merror: \033[0m";
         case MsgType::kFatal: return ": \033[0;31mfatal error: \033[0m";
-        default: UNREACHABLE_CODE;
     }
 }
 

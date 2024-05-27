@@ -463,5 +463,5 @@ void Parser::logSyntaxError(int tt) const {
         case tt_lexical_error: return;
         default: msg = "unexpected token"; break;
     }
-    logger::error(*this, tkn_.loc).println(uxs::make_runtime_string(msg));
+    logger::error(*this, tkn_.loc).println("{}", msg);
 }

@@ -24,7 +24,7 @@ class Logger {
 
     template<typename... Args>
     LoggerTy& println(uxs::format_string<Args...> fmt, const Args&... args) {
-        uxs::basic_vformat<uxs::membuffer>(buf_, fmt.get(), uxs::make_format_args(args...));
+        uxs::basic_vformat(buf_, fmt.get(), uxs::make_format_args(args...));
         return static_cast<LoggerTy&>(*this).show();
     }
 
