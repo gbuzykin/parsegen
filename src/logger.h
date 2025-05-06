@@ -1,6 +1,6 @@
 #pragma once
 
-#include "uxs/format.h"
+#include "uxs/format.h"  // NOLINT
 
 struct TokenLoc {
     unsigned ln = 0;

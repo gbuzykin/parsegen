@@ -5,7 +5,6 @@
 
 #include <unordered_map>
 #include <variant>
-#include <vector>
 
 enum {
     tt_eof = 256,

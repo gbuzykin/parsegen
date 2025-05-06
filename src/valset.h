@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstddef>
 #include <iterator>
+#include <memory>
 
 namespace detail {
 constexpr unsigned lsb(unsigned long v) {
