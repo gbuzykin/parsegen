@@ -173,9 +173,9 @@ void Grammar::printProduction(uxs::iobuf& outp, unsigned n_prod, std::optional<u
     const auto& prod = productions_[n_prod];
     uxs::print(outp, "{} ->", getSymbolName(prod.lhs));
     if (pos) {
-        for (size_t i = 0; i < *pos; ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
+        for (std::size_t i = 0; i < *pos; ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
         uxs::print(outp, " .");
-        for (size_t i = *pos; i < prod.rhs.size(); ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
+        for (std::size_t i = *pos; i < prod.rhs.size(); ++i) { outp.put(' ').write(decoratedSymbolText(prod.rhs[i])); }
     } else {
         for (unsigned id : prod.rhs) { outp.put(' ').write(decoratedSymbolText(id)); }
     }

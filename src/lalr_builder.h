@@ -1,11 +1,8 @@
 #pragma once
 
 #include "grammar.h"
-#include "valset.h"
 
-#include <map>
 #include <tuple>
-#include <vector>
 
 // LALR table builder class
 class LalrBuilder {

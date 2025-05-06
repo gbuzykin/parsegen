@@ -3,10 +3,7 @@
 #include "logger.h"
 
 #include "uxs/algorithm.h"
-#include "uxs/format.h"
 #include "uxs/io/oflatbuf.h"
-
-#include <optional>
 
 void LalrBuilder::build() {
     buildFirstTable();
@@ -180,7 +177,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
                                        const std::vector<std::vector<unsigned>>& goto_tbl) {
     // Compress action table :
 
-    size_t row_size_max = 0, row_size_avg = 0, row_count = 0;
+    std::size_t row_size_max = 0, row_size_avg = 0, row_count = 0;
     compr_action_tbl_.index.resize(action_tbl.size());
     compr_action_tbl_.data.reserve(10000);
     for (unsigned n_state = 0; n_state < action_tbl.size(); ++n_state) {
@@ -228,7 +225,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
         }
 
         // Build compressed table
-        size_t current_table_size = compr_action_tbl_.data.size();
+        std::size_t current_table_size = compr_action_tbl_.data.size();
         compr_action_tbl_.index[n_state] = static_cast<unsigned>(current_table_size);
         for (unsigned symb = 0; symb < grammar_.getTokenCount(); ++symb) {
             const auto& action = action_tbl[n_state][symb];
@@ -241,7 +238,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
         // Add default action
         compr_action_tbl_.data.emplace_back(-1, most_freq_action);
 
-        size_t row_size = compr_action_tbl_.data.size() - current_table_size;
+        std::size_t row_size = compr_action_tbl_.data.size() - current_table_size;
         row_size_max = std::max(row_size_max, row_size), row_size_avg += row_size, ++row_count;
     }
 
@@ -267,7 +264,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
         unsigned n_most_freq_state = static_cast<unsigned>(max_it - histo.begin());
 
         // Build compressed table
-        size_t current_table_size = compr_goto_tbl_.data.size();
+        std::size_t current_table_size = compr_goto_tbl_.data.size();
         compr_goto_tbl_.index[n] = static_cast<unsigned>(current_table_size);
         for (unsigned n_state = 0; n_state < goto_tbl.size(); ++n_state) {
             unsigned n_new_state = goto_tbl[n_state][n];
@@ -277,7 +274,7 @@ void LalrBuilder::makeCompressedTables(const std::vector<std::vector<Action>>& a
         }
         compr_goto_tbl_.data.emplace_back(-1, n_most_freq_state);
 
-        size_t row_size = compr_goto_tbl_.data.size() - current_table_size;
+        std::size_t row_size = compr_goto_tbl_.data.size() - current_table_size;
         row_size_max = std::max(row_size_max, row_size), row_size_avg += row_size, ++row_count;
     }
 

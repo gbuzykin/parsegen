@@ -5,8 +5,6 @@
 
 #include "uxs/io/iobuf.h"
 
-#include <memory>
-#include <optional>
 #include <vector>
 
 enum {

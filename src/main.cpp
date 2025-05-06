@@ -4,11 +4,13 @@
 #include "uxs/cli/parser.h"
 #include "uxs/io/filebuf.h"
 
+#include <exception>
+
 #define XSTR(s) STR(s)
 #define STR(s)  #s
 
 template<typename Iter>
-void outputData(uxs::iobuf& outp, Iter from, Iter to, size_t ntab = 0) {
+void outputData(uxs::iobuf& outp, Iter from, Iter to, std::size_t ntab = 0) {
     auto convert_to_string = [](const auto& v) {
         if constexpr (std::is_constructible<std::string, decltype(v)>::value) {
             return '\"' + v + '\"';
@@ -49,7 +51,7 @@ void outputParserEngine(uxs::iobuf& outp) {
     // clang-format off
     static constexpr std::string_view text[] = {
         "static int parse(int tt, int* sptr0, int** p_sptr, int rise_error) {",
-        "    enum { kShiftFlag = 1, kFlagCount = 1 };",
+        "    enum { shift_flag = 1, flag_count = 1 };",
         "    int action = rise_error;",
         "    if (action >= 0) {",
         "        const int* action_tbl = &action_list[action_idx[*(*p_sptr - 1)]];",
@@ -57,23 +59,23 @@ void outputParserEngine(uxs::iobuf& outp) {
         "        action = action_tbl[1];",
         "    }",
         "    if (action >= 0) {",
-        "        if (!(action & kShiftFlag)) {",
-        "            const int* info = &reduce_info[action >> kFlagCount];",
+        "        if (!(action & shift_flag)) {",
+        "            const int* info = &reduce_info[action >> flag_count];",
         "            const int* goto_tbl = &goto_list[info[1]];",
         "            int state = *((*p_sptr -= info[0]) - 1);",
         "            while (goto_tbl[0] >= 0 && goto_tbl[0] != state) { goto_tbl += 2; }",
         "            *(*p_sptr)++ = goto_tbl[1];",
         "            return predef_act_reduce + info[2];",
         "        }",
-        "        *(*p_sptr)++ = action >> kFlagCount;",
+        "        *(*p_sptr)++ = action >> flag_count;",
         "        return predef_act_shift;",
         "    }",
         "    /* Roll back to state, which can accept error */",
         "    do {",
         "        const int* action_tbl = &action_list[action_idx[*(*p_sptr - 1)]];",
         "        while (action_tbl[0] >= 0 && action_tbl[0] != predef_tt_error) { action_tbl += 2; }",
-        "        if (action_tbl[1] >= 0 && (action_tbl[1] & kShiftFlag)) { /* Can recover */",
-        "            *(*p_sptr)++ = action_tbl[1] >> kFlagCount;           /* Shift error token */",
+        "        if (action_tbl[1] >= 0 && (action_tbl[1] & shift_flag)) { /* Can recover */",
+        "            *(*p_sptr)++ = action_tbl[1] >> flag_count;           /* Shift error token */",
         "            break;",
         "        }",
         "    } while (--*p_sptr != sptr0);",
@@ -106,27 +108,22 @@ int main(int argc, char** argv) {
 
         auto parse_result = cli->parse(argc, argv);
         if (show_help) {
-            for (auto const* node = parse_result.node; node; node = node->get_parent()) {
-                if (node->get_type() == uxs::cli::node_type::command) {
-                    uxs::stdbuf::out.write(static_cast<const uxs::cli::basic_command<char>&>(*node).make_man_page(true));
-                    break;
-                }
-            }
+            uxs::stdbuf::out().write(parse_result.node->get_command()->make_man_page(uxs::cli::text_coloring::colored));
             return 0;
         } else if (show_version) {
-            uxs::println(uxs::stdbuf::out, "{}", XSTR(VERSION));
+            uxs::println(uxs::stdbuf::out(), "{}", XSTR(VERSION));
             return 0;
         } else if (parse_result.status != uxs::cli::parsing_status::ok) {
             switch (parse_result.status) {
                 case uxs::cli::parsing_status::unknown_option: {
-                    logger::fatal().println("unknown command line option `{}`", argv[parse_result.arg_count]);
+                    logger::fatal().println("unknown command line option `{}`", argv[parse_result.argc_parsed]);
                 } break;
                 case uxs::cli::parsing_status::invalid_value: {
-                    if (parse_result.arg_count < argc) {
-                        logger::fatal().println("invalid command line argument `{}`", argv[parse_result.arg_count]);
+                    if (parse_result.argc_parsed < argc) {
+                        logger::fatal().println("invalid command line argument `{}`", argv[parse_result.argc_parsed]);
                     } else {
                         logger::fatal().println("expected command line argument after `{}`",
-                                                argv[parse_result.arg_count - 1]);
+                                                argv[parse_result.argc_parsed - 1]);
                     }
                 } break;
                 case uxs::cli::parsing_status::unspecified_value: {
@@ -203,7 +200,7 @@ int main(int argc, char** argv) {
                 uxs::print(ofile, "\nenum {{\n");
                 if (start_conditions.size() > 1) {
                     uxs::print(ofile, "    sc_{} = 0,\n", start_conditions[0].first);
-                    for (size_t i = 1; i < start_conditions.size() - 1; ++i) {
+                    for (std::size_t i = 1; i < start_conditions.size() - 1; ++i) {
                         uxs::print(ofile, "    sc_{},\n", start_conditions[i].first);
                     }
                     uxs::print(ofile, "    sc_{}\n", start_conditions[start_conditions.size() - 1].first);
@@ -220,10 +217,10 @@ int main(int argc, char** argv) {
         std::vector<int> action_idx(action_table.index.size()), action_list;
         action_list.reserve(2 * action_table.data.size());
         auto action_code = [](const LalrBuilder::Action& action) {
-            enum { kShiftFlag = 1, kFlagCount = 1 };
+            enum { shift_flag = 1, flag_count = 1 };
             switch (action.type) {
-                case LalrBuilder::Action::Type::kShift: return static_cast<int>(action.val << kFlagCount) | kShiftFlag;
-                case LalrBuilder::Action::Type::kReduce: return static_cast<int>(3 * action.val) << kFlagCount;
+                case LalrBuilder::Action::Type::kShift: return static_cast<int>(action.val << flag_count) | shift_flag;
+                case LalrBuilder::Action::Type::kReduce: return static_cast<int>(3 * action.val) << flag_count;
                 default: break;
             }
             return -1;
