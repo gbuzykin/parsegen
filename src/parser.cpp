@@ -326,7 +326,7 @@ int Parser::lex() {
             state_stack_.reserve(llen);
             first = last;
         }
-        first_ += llen, col_ += llen;
+        first_ += llen, col_ += static_cast<unsigned>(llen);
         tkn_.loc.col_last = col_ - 1;
 
         std::optional<char> escape;

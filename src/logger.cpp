@@ -68,6 +68,7 @@ std::string_view typeString(MsgType type) {
         case MsgType::kWarning: return ": \033[0;35mwarning: \033[0m";
         case MsgType::kError: return ": \033[0;31merror: \033[0m";
         case MsgType::kFatal: return ": \033[0;31mfatal error: \033[0m";
+        default: return "";
     }
 }
 
