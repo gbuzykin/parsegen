@@ -2,7 +2,7 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 15,
+    "minor": 21,
     "patch": 0
   },
   "configurePresets": [
@@ -11,13 +11,13 @@
       "displayName": "'default' config",
       "description": "'default' configure using 'Ninja Multi-Config' generator",
       "generator": "Ninja Multi-Config",
-      "cacheVariables": {
-      },
+      "cacheVariables": {},
       "architecture": {
         "value": "x64",
         "strategy": "external"
       },
-      "binaryDir": ".\\build"
+      "binaryDir": "${sourceDir}/build",
+      "installDir": "${sourceDir}/install"
     }
   ],
   "buildPresets": [

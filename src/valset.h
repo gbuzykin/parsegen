@@ -51,8 +51,8 @@ class ValueSet {
         friend bool operator==(const Iterator& lhs, const Iterator& rhs) {
             assert(lhs.vset_ == rhs.vset_);
             return lhs.v_ == rhs.v_;
-        };
-        friend bool operator!=(const Iterator& lhs, const Iterator& rhs) { return !(lhs == rhs); };
+        }
+        friend bool operator!=(const Iterator& lhs, const Iterator& rhs) { return !(lhs == rhs); }
 
      private:
         const ValueSet* vset_ = nullptr;
@@ -96,21 +96,21 @@ class ValueSet {
     friend ValueSet operator|(const ValueSet& lhs, const ValueSet& rhs) {
         ValueSet ret = lhs;
         return ret |= rhs;
-    };
+    }
     friend ValueSet operator&(const ValueSet& lhs, const ValueSet& rhs) {
         ValueSet ret = lhs;
         return ret &= rhs;
-    };
+    }
     friend ValueSet operator^(const ValueSet& lhs, const ValueSet& rhs) {
         ValueSet ret = lhs;
         return ret ^= rhs;
-    };
+    }
     friend ValueSet operator-(const ValueSet& lhs, const ValueSet& rhs) {
         ValueSet ret = lhs;
         return ret -= rhs;
-    };
-    friend bool operator==(const ValueSet& lhs, const ValueSet& rhs) { return lhs.set_ == rhs.set_; };
-    friend bool operator!=(const ValueSet& lhs, const ValueSet& rhs) { return lhs.set_ != rhs.set_; };
+    }
+    friend bool operator==(const ValueSet& lhs, const ValueSet& rhs) { return lhs.set_ == rhs.set_; }
+    friend bool operator!=(const ValueSet& lhs, const ValueSet& rhs) { return lhs.set_ != rhs.set_; }
 
  protected:
     static constexpr unsigned kBitsPerWord = 8 * sizeof(unsigned long);

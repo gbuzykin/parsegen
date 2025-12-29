@@ -1,7 +1,7 @@
 #include "grammar.h"
 
-#include "uxs/algorithm.h"
-#include "uxs/format.h"
+#include <uxs/algorithm.h>
+#include <uxs/format.h>
 
 Grammar::Grammar(std::string file_name) : file_name_(std::move(file_name)) {
     // Initialize predefined tokens

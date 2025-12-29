@@ -2,8 +2,8 @@
 
 #include "logger.h"
 
-#include "uxs/algorithm.h"
-#include "uxs/io/oflatbuf.h"
+#include <uxs/algorithm.h>
+#include <uxs/io/oflatbuf.h>
 
 void LalrBuilder::build() {
     buildFirstTable();

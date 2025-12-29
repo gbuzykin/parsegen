@@ -3,7 +3,7 @@
 #include "name_table.h"
 #include "valset.h"
 
-#include "uxs/io/iobuf.h"
+#include <uxs/io/iobuf.h>
 
 #include <vector>
 

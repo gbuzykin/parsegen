@@ -38,10 +38,10 @@ class LalrBuilder {
         unsigned n_prod, pos;
         friend bool operator==(const Position& p1, const Position& p2) {
             return p1.n_prod == p2.n_prod && p1.pos == p2.pos;
-        };
+        }
         friend bool operator<(const Position& p1, const Position& p2) {
             return p1.n_prod < p2.n_prod || (p1.n_prod == p2.n_prod && p1.pos < p2.pos);
-        };
+        }
     };
 
     struct LookAheadSet {

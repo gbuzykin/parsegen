@@ -1,8 +1,8 @@
 #include "lalr_builder.h"
 #include "parser.h"
 
-#include "uxs/cli/parser.h"
-#include "uxs/io/filebuf.h"
+#include <uxs/cli/parser.h>
+#include <uxs/io/filebuf.h>
 
 #include <exception>
 

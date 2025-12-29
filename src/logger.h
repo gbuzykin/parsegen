@@ -1,6 +1,6 @@
 #pragma once
 
-#include "uxs/format.h"  // NOLINT
+#include <uxs/format.h>  // NOLINT
 
 struct TokenLoc {
     unsigned ln = 0;
@@ -20,7 +20,7 @@ class Logger {
 
     MsgType getType() const { return type_; }
     std::string_view getMessage() const { return std::string_view(buf_.data(), buf_.size()); }
-    void clear() { buf_.clear(); };
+    void clear() { buf_.clear(); }
 
     template<typename... Args>
     LoggerTy& println(uxs::format_string<Args...> fmt, const Args&... args) {

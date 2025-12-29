@@ -1,6 +1,6 @@
 #include "parser.h"
 
-#include "uxs/algorithm.h"
+#include <uxs/algorithm.h>
 
 namespace lex_detail {
 #include "lex_analyzer.inl"
@@ -27,7 +27,7 @@ bool Parser::parse() {
 
     // Read the whole file
     input_.seek(0);
-    std::size_t n_read = input_.read(est::as_span(text_.get(), file_sz));
+    std::size_t n_read = input_.read(std::span(text_.get(), file_sz));
     first_ = text_.get();
     last_ = text_.get() + n_read;
     current_line_ = getNextLine(first_, last_);
