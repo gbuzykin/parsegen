@@ -65,14 +65,10 @@ ForEachMacros:
   - BOOST_FOREACH
 IncludeBlocks:   Regroup
 IncludeCategories:
-  - Regex:           '^"uxs/.*"'
+  - Regex:           '^"[^/]*/.*"'
+    Priority:        13
+  - Regex:           '^<[^/]*/.*>'
     Priority:        20
-  - Regex:           '^<uxs/.*>'
-    Priority:        21
-  - Regex:           '^"uxs-legacy/.*"'
-    Priority:        22
-  - Regex:           '^<uxs-legacy/.*>'
-    Priority:        23
   - Regex:           '^".*\.hpp"'
     Priority:        10
   - Regex:           '^".*\.hxx"'
@@ -86,7 +82,7 @@ IncludeCategories:
   - Regex:           '^<.*\.h>'
     Priority:        32
   - Regex:           '^<.*>'
-    Priority:        40
+    Priority:        33
 IncludeIsMainRegex: '([-_](test|unittest))?$'
 IndentCaseLabels: true
 IndentPPDirectives: AfterHash
