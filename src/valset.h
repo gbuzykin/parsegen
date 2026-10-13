@@ -117,7 +117,7 @@ class ValueSet {
     static constexpr unsigned kBit2WordShift = detail::lsb(kBitsPerWord);
     static unsigned nword(unsigned v) { return v >> kBit2WordShift; }
     static unsigned nbit(unsigned v) { return v & (kBitsPerWord - 1); }
-    static unsigned long bitmask(unsigned v) { return 1ul << nbit(v); }
+    static unsigned long bitmask(unsigned v) { return 1UL << nbit(v); }
 
     // Bit array for presence indication
     std::array<unsigned long, (kMaxValue + 1) / kBitsPerWord> set_;

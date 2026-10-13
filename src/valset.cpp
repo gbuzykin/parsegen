@@ -36,7 +36,7 @@ ValueSet& ValueSet::addValues(unsigned from, unsigned to) {
         *it |= ~(bitmask(from) - 1) & (bitmask(to) - 1);
     } else {
         *it++ |= ~(bitmask(from) - 1);
-        while (it != it_last) { *it++ = ~0ul; }
+        while (it != it_last) { *it++ = ~0UL; }
         if (it_last != set_.end()) { *it_last |= bitmask(to) - 1; }
     }
     return *this;
@@ -49,7 +49,7 @@ ValueSet& ValueSet::removeValues(unsigned from, unsigned to) {
         *it &= (bitmask(from) - 1) | ~(bitmask(to) - 1);
     } else {
         *it++ &= bitmask(from) - 1;
-        while (it != it_last) { *it++ = 0ul; }
+        while (it != it_last) { *it++ = 0UL; }
         if (it_last != set_.end()) { *it_last &= ~(bitmask(to) - 1); }
     }
     return *this;

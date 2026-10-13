@@ -87,8 +87,8 @@ $ ./parsegen test.gr -o <new-analyzer-file-name> --header-file=<new-defs-file-na
 File `parser_defs.h` contains numerical identifiers for tokens, actions, and start conditions (or start analyzer
 states). Only one `sc_initial` start condition is defined for our example.
 
-File `parser_analyzer.inl` contains necessary tables and `parse()` function implementation, defined as `static`. This
-function has the following prototype:
+File `parser_analyzer.inl` contains necessary tables and `parse()` function implementation, defined as `static` by
+default. This function has the following prototype:
 
 ```c
 static int parse(int tt, int* sptr0, int** p_sptr, int rise_error);

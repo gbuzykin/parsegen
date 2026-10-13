@@ -2,6 +2,8 @@
 
 #include <uxs/format.h>  // NOLINT
 
+#include <string_view>
+
 struct TokenLoc {
     unsigned ln = 0;
     unsigned col_first = 0, col_last = 0;
@@ -24,7 +26,7 @@ class Logger {
 
     template<typename... Args>
     LoggerTy& println(uxs::format_string<Args...> fmt, const Args&... args) {
-        uxs::basic_vformat(buf_, fmt.get(), uxs::make_format_args(args...));
+        uxs::vformat_append(buf_, fmt.get(), uxs::format_args::make(args...));
         return static_cast<LoggerTy&>(*this).show();
     }
 

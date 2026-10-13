@@ -3,6 +3,8 @@
 #include "grammar.h"
 #include "logger.h"
 
+#include <uxs/membuffer.h>
+
 #include <unordered_map>
 #include <variant>
 
@@ -54,7 +56,7 @@ class Parser {
     char* first_ = nullptr;
     char* last_ = nullptr;
     unsigned ln_ = 1, col_ = 1;
-    uxs::inline_basic_dynbuffer<int, 1> state_stack_;
+    uxs::basic_dynbuffer<int> state_stack_;
     TokenInfo tkn_;
     Grammar& grammar_;
     std::unordered_map<std::string_view, std::string_view> options_;
