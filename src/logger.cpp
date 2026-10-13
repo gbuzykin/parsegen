@@ -16,7 +16,7 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
 
     auto p_from = line.begin();
     if (first == 0) {
-        while (p_from != line.end() && uxs::is_space(*p_from)) { ++p_from; }
+        while (p_from != line.end() && uxs::is_space{}(*p_from)) { ++p_from; }
     } else {
         p_from += first - 1;
     }
@@ -24,7 +24,7 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
     auto p_to = line.end();
     if (p_from != line.end()) {
         if (last == 0) {
-            while (--p_to != p_from && uxs::is_space(*p_to)) {}
+            while (--p_to != p_from && uxs::is_space{}(*p_to)) {}
         } else {
             p_to = std::max(p_from, line.begin() + last - 1);
         }
@@ -37,13 +37,14 @@ std::pair<std::string, std::string> markInputLine(std::string_view line, unsigne
 
     const unsigned tab_size = 4;
     unsigned col = 0, mark_limits[2] = {0, 0};
-    std::uint32_t code = 0;
-    for (auto p = line.begin(), next = p; uxs::from_utf8(p, line.end(), next, code) != 0; p = next) {
+    for (auto p = line.begin(), next = p; p != line.end(); p = next) {
+        std::uint32_t code = 0;
+        next = uxs::from_utf8(p, line.end(), code).iter;
         if (code == '\t') {  // Convert tab into spaces
             auto align_up = [](unsigned v, unsigned base) { return (v + base - 1) & ~(base - 1); };
             const unsigned tab_pos = align_up(col + 1, tab_size);
             while (col < tab_pos) { tab2space_line.push_back(' '), ++col; }
-        } else if (uxs::is_space(code)) {
+        } else if (uxs::is_space{}(code)) {
             tab2space_line.push_back(' '), ++col;
         } else {
             do { tab2space_line.push_back(*p++); } while (p != next);

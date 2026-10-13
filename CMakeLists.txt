@@ -67,7 +67,8 @@ endif()
 block()
 set(UXS_USE_ZLIB OFF)
 set(UXS_USE_LIBZIP OFF)
-set(UXS_DO_INSTALL_SDK OFF)
+set(UXS_BUILD_STATIC_ONLY ON)
+set(UXS_DO_INSTALL OFF)
 FetchContent_Declare(uxs SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/uxs)
 FetchContent_MakeAvailable(uxs)
 endblock()
@@ -80,7 +81,7 @@ file(GLOB_RECURSE sources src/*.h;src/*.cpp)
 add_executable(parsegen ${sources})
 
 target_compile_definitions(parsegen PRIVATE VERSION=${VERSION})
-target_link_libraries(parsegen PRIVATE UXS::UXS)
+target_link_libraries(parsegen PRIVATE UXS::UXS-static)
 
 install(TARGETS parsegen RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
                                  COMPONENT binaries)

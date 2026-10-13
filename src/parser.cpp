@@ -1,6 +1,6 @@
 #include "parser.h"
 
-#include <uxs/algorithm.h>
+#include <span>
 
 namespace lex_detail {
 #include "lex_analyzer.inl"
@@ -271,7 +271,7 @@ bool Parser::parse() {
     }
 
     for (unsigned n : nonterm_defined - nonterm_used) {
-        if (!uxs::any_of(start_conditions, [&grammar = grammar_, n](const auto& sc) {
+        if (!std::ranges::any_of(start_conditions, [&grammar = grammar_, n](const auto& sc) {
                 return grammar.getProductionInfo(sc.second).lhs == makeNontermId(n);
             })) {
             logger::warning(file_name_).println("unused nonterminal `{}`", grammar_.getSymbolName(makeNontermId(n)));
@@ -323,7 +323,7 @@ int Parser::lex() {
                 return tt_lexical_error;
             }
             // enlarge state stack and continue analysis
-            state_stack_.reserve(llen);
+            state_stack_.reserve(state_stack_.size() + llen);
             first = last;
         }
         first_ += llen, col_ += static_cast<unsigned>(llen);
@@ -341,17 +341,17 @@ int Parser::lex() {
             case lex_detail::pat_escape_v: escape = '\v'; break;
             case lex_detail::pat_escape_other: escape = lexeme[1]; break;
             case lex_detail::pat_escape_hex: {
-                escape = uxs::dig_v(lexeme[2]);
-                if (llen > 3) { *escape = (*escape << 4) + uxs::dig_v(lexeme[3]); }
+                escape = uxs::dig_v{}(lexeme[2]);
+                if (llen > 3) { *escape = (*escape << 4) + uxs::dig_v{}(lexeme[3]); }
                 if (!*escape) {
                     print_zero_escape_char_msg();
                     return tt_lexical_error;
                 }
             } break;
             case lex_detail::pat_escape_oct: {
-                escape = uxs::dig_v(lexeme[1]);
-                if (llen > 2) { *escape = (*escape << 3) + uxs::dig_v(lexeme[2]); }
-                if (llen > 3) { *escape = (*escape << 3) + uxs::dig_v(lexeme[3]); }
+                escape = uxs::dig_v{}(lexeme[1]);
+                if (llen > 2) { *escape = (*escape << 3) + uxs::dig_v{}(lexeme[2]); }
+                if (llen > 3) { *escape = (*escape << 3) + uxs::dig_v{}(lexeme[3]); }
                 if (!*escape) {
                     print_zero_escape_char_msg();
                     return tt_lexical_error;
@@ -375,7 +375,7 @@ int Parser::lex() {
 
             // ------ symbols
             case lex_detail::pat_symb: {
-                tkn_.val = 0u;
+                tkn_.val = 0U;
                 state_stack_.push_back(lex_detail::sc_symb);
             } break;
             case lex_detail::pat_symb_other: {

@@ -46,7 +46,7 @@ bool Grammar::setTokenPrecAndAssoc(unsigned id, int prec, Assoc assoc) {
 
 Grammar::ProductionInfo& Grammar::addProduction(unsigned lhs, std::vector<unsigned> rhs, int prec) {
     if (prec < 0) {  // Calculate default precedence from the last token
-        if (auto [it, found] = uxs::find_if(uxs::make_reverse_range(rhs), isToken); found) { prec = tokens_[*it].prec; }
+        if (auto [it, found] = uxs::find_if(est::make_reverse_range(rhs), isToken); found) { prec = tokens_[*it].prec; }
     }
 
     unsigned final_action = 0;
@@ -197,10 +197,10 @@ std::string Grammar::symbolText(unsigned id) const {
             case '\'': text += "\\\'"; break;
             case '\"': text += "\\\""; break;
             default: {
-                if (id < 0x20 || (id >= 0x7F && id < 0x100)) {
+                if (id < 0x20 || (id >= 0x7f && id < 0x100)) {
                     text += "\\x";
-                    if (id >= 0x10) { text.push_back('0' + ((id >> 4) & 0xF)); }
-                    text.push_back('0' + (id & 0xF));
+                    if (id >= 0x10) { text.push_back('0' + ((id >> 4) & 0xf)); }
+                    text.push_back('0' + (id & 0xf));
                 } else {
                     text.push_back(id);
                 }
