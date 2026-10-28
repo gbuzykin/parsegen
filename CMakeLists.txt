@@ -85,6 +85,7 @@ target_link_libraries(parsegen PRIVATE UXS::UXS-static)
 
 install(TARGETS parsegen RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
                                  COMPONENT binaries)
+install_win32_pdb(parsegen)
 
 # ##############################################################################
 # Auxiliary

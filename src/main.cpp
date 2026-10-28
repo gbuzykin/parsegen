@@ -274,6 +274,9 @@ int main(int argc, char** argv) {
         }
 
         return 0;
-    } catch (const std::exception& e) { logger::fatal().println("exception caught: {}", e.what()); }
-    return -1;
+
+    } catch (const std::exception& e) {
+        logger::fatal().println("exception caught: {}", e.what());
+        return -1;
+    }
 }
