@@ -94,7 +94,8 @@ void outputParserEngine(uxs::iobuf& outp) {
 
 int main(int argc, char** argv) {
     try {
-        bool show_help = false, show_version = false;
+        bool show_help = false;
+        bool show_version = false;
         std::string input_file_name;
         std::string analyzer_file_name("parser_analyzer.inl");
         std::string defs_file_name("parser_defs.h");
@@ -274,6 +275,9 @@ int main(int argc, char** argv) {
         }
 
         return 0;
-    } catch (const std::exception& e) { logger::fatal().println("exception caught: {}", e.what()); }
-    return -1;
+
+    } catch (const std::exception& e) {
+        logger::fatal().println("exception caught: {}", e.what());
+        return -1;
+    }
 }
