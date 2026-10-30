@@ -4,7 +4,9 @@
 #include <uxs/cli/parser.h>
 #include <uxs/io/filebuf.h>
 
+#include <algorithm>
 #include <exception>
+#include <type_traits>
 
 #define XSTR(s) STR(s)
 #define STR(s)  #s

@@ -1,6 +1,10 @@
-#include "logger.h"
-
 #include "parser.h"
+
+#include <uxs/string_conv.h>
+#include <uxs/utf.h>
+
+#include <algorithm>
+#include <cstdint>
 
 using namespace logger;
 

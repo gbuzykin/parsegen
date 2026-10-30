@@ -1,5 +1,8 @@
 #include "parser.h"
 
+#include <uxs/io/iostate.h>
+
+#include <algorithm>
 #include <span>
 
 namespace lex_detail {
