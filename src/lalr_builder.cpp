@@ -5,6 +5,9 @@
 #include <uxs/algorithm.h>
 #include <uxs/io/oflatbuf.h>
 
+#include <algorithm>
+#include <stdexcept>
+
 void LalrBuilder::build() {
     buildFirstTable();
     buildAetaTable();

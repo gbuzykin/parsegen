@@ -2,6 +2,12 @@
 
 #include "parser.h"
 
+#include <uxs/string_conv_common.h>
+#include <uxs/utf.h>
+
+#include <algorithm>
+#include <cstdint>
+
 using namespace logger;
 
 namespace {

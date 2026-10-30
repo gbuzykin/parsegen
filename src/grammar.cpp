@@ -2,6 +2,9 @@
 
 #include <uxs/algorithm.h>
 #include <uxs/format.h>
+#include <uxs/iterator.h>
+
+#include <stdexcept>
 
 Grammar::Grammar(std::string file_name) : file_name_(std::move(file_name)) {
     // Initialize predefined tokens
